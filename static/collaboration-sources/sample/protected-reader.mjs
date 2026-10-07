@@ -7,7 +7,8 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
   const purifier=DOMPurify.sanitize?DOMPurify:DOMPurify(win);
   const session=createInvitationSession({window:win,apiBase,fetcher});
   const original=new Map([...root.querySelectorAll('[data-publication-state="protected"]')].map(node=>[node.id,node.cloneNode(true)]));
-  let epoch=0,pending=null,lastRequested=null,controller=null,opening=null;
+  let epoch=0,pending=null,lastRequested=null,loadingAll=null,hydratedEpoch=-1;
+  const controllers=new Map(),opening=new Map(),failures=new Set();
   const loaded=new Set(),blobs=new Set(),privateSections=new Set();
   const dialog=doc.createElement('dialog');dialog.className='protected-login';
   dialog.innerHTML='<form method="dialog"><p><strong>此页面需登录后查看</strong></p><label>邀请码 <input name="invitation" type="password" autocomplete="off" maxlength="256" required></label><p role="status" aria-live="polite"></p><button type="submit">登录查看</button> <button type="button" data-close>取消</button></form>';
@@ -17,22 +18,24 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
   const closeError=()=>{if(readError.close)readError.close();else readError.removeAttribute('open');};
   readError.querySelector('[data-close]').onclick=closeError;
   const sessionButton=doc.createElement('button');sessionButton.type='button';sessionButton.textContent='邀请码登录';
-  const mountSession=()=>{(doc.querySelector('.site-header-inner')??root.querySelector('.outline-toolbar-tools')??root).append(sessionButton);};mountSession();
+  const retryAll=doc.createElement('button');retryAll.type='button';retryAll.textContent='部分受保护文档加载失败，重试';retryAll.hidden=true;
+  retryAll.onclick=()=>void hydrate({retry:true});
+  const mountSession=()=>{(doc.querySelector('.site-header-inner')??root.querySelector('.outline-toolbar-tools')??root).append(sessionButton,retryAll);};mountSession();
   const refresh=()=>{if(outline)win.dispatchEvent(new win.CustomEvent('personal-outline-changed'));mountSession();};
   const clearContent=()=>{
     for(const id of loaded){const node=doc.getElementById(id);if(node&&original.has(id))node.replaceWith(original.get(id).cloneNode(true));}
-    loaded.clear();for(const blob of blobs)win.URL.revokeObjectURL(blob);blobs.clear();
+    loaded.clear();delete root.dataset.privateLoading;for(const blob of blobs)win.URL.revokeObjectURL(blob);blobs.clear();
     for(const section of privateSections)section.remove();privateSections.clear();
     refresh();
   };
   const wipe=session.clear,request=session.request;let sessionStatus=session.status;
   session.subscribe(()=>{
     const restoredSession=sessionStatus==='checking'&&session.authenticated;sessionStatus=session.status;
-    epoch++;controller?.abort();controller=null;
+    epoch++;for(const controller of controllers.values())controller.abort();controllers.clear();opening.clear();loadingAll=null;failures.clear();retryAll.hidden=true;
     if(session.authenticated)root.dataset.privateSession='active';else{delete root.dataset.privateSession;clearContent();closeError();}
     sessionButton.textContent=session.authenticated?'退出登录':session.status==='unavailable'?'重试登录验证':'邀请码登录';refresh();
     win.dispatchEvent(new win.CustomEvent('personal-session-changed'));
-    if(restoredSession){lastRequested=null;void session.ready.then(focused);}
+    if(session.authenticated)void session.ready.then(async()=>{await hydrate();if(restoredSession){lastRequested=null;focused();}});
   });
   const show=()=>{status.textContent='';if(!dialog.open){if(dialog.showModal)dialog.showModal();else dialog.setAttribute('open','');input.focus();}};
   const close=()=>{if(dialog.close)dialog.close();else dialog.removeAttribute('open');input.value='';};
@@ -41,11 +44,12 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
     if(!readError.open){if(readError.showModal)readError.showModal();else readError.setAttribute('open','');}
   };
   const retrySession=async id=>{await session.restore();if(session.status==='unavailable'){showReadError('登录验证暂不可用，请重试',()=>retrySession(id));return;}if(id)await open(id);else if(!session.authenticated)show();};
-  const loadDocument=async id=>{
-    const target=doc.getElementById('node-'+id);if(!target||target.dataset.publicationState!=='protected'||loaded.has(target.id))return;
-    pending=id;
+  const loadDocument=async(id,{background=false}={})=>{
+    const target=doc.getElementById('node-'+id);if(!target||target.dataset.publicationState!=='protected')return false;if(target.dataset.privateLoaded==='true')return true;
+    if(!background)pending=id;
     if(!session.authenticated){if(session.status==='unavailable')showReadError('登录验证暂不可用，请重试',()=>retrySession(id));else show();return;}
-    const generation=epoch;controller?.abort();controller=new AbortController();const signal=controller.signal;
+    if(!original.has(target.id))original.set(target.id,target.cloneNode(true));
+    const generation=epoch,controller=new AbortController();controllers.set(id,controller);const signal=controller.signal;
     try{
       const payload=await(await request('/documents/'+encodeURIComponent(id),{signal})).json();
       if(generation!==epoch||signal.aborted)return;
@@ -86,25 +90,40 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
       }
       if(generation!==epoch||signal.aborted)return;
       replacement.dataset.publicationState='protected';replacement.dataset.privateLoaded='true';
-      doc.getElementById('node-'+id)?.replaceWith(replacement);loaded.add(replacement.id);refresh();close();closeError();
+      doc.getElementById('node-'+id)?.replaceWith(replacement);loaded.add(replacement.id);failures.delete(id);refresh();if(!background){close();closeError();}return true;
     }catch(error){
+      if(background){if(!signal.aborted&&generation===epoch&&![401,403,404].includes(error.status))failures.add(id);return false;}
       if(error.status===401&&!session.authenticated&&pending===id){show();status.textContent=error.message;return;}
       if(signal.aborted||generation!==epoch)return;
       if(!session.authenticated){show();status.textContent=error.message;return;}
       showReadError(error.name==='AbortError'?'页面读取超时，请重试':error.message,()=>open(id));
-    }
+    }finally{if(controllers.get(id)===controller)controllers.delete(id);retryAll.hidden=failures.size===0;}
   };
-  const open=async id=>{
+  const open=async(id,options={})=>{
     await session.ready;
-    if(opening?.id===id&&opening.generation===epoch)return opening.task;
-    const task=loadDocument(id);opening={id,generation:epoch,task};
-    try{return await task;}finally{if(opening?.task===task)opening=null;}
+    if(opening.get(id)?.generation===epoch)return opening.get(id).task;
+    const task=loadDocument(id,options);opening.set(id,{generation:epoch,task});
+    try{return await task;}finally{if(opening.get(id)?.task===task)opening.delete(id);}
+  };
+  const hydrate=({retry=false}={})=>{
+    if(!session.authenticated)return Promise.resolve();if(loadingAll)return loadingAll;if(!retry&&hydratedEpoch===epoch)return Promise.resolve();
+    const generation=epoch,attempted=new Set();root.dataset.privateLoading='true';
+    const task=(async()=>{
+      while(generation===epoch&&session.authenticated){
+        const candidates=[...root.querySelectorAll('[data-publication-state="protected"]')].filter(node=>node.dataset.privateLoaded!=='true'&&!attempted.has(node.id));
+        const roots=candidates.filter(node=>!candidates.some(parent=>parent!==node&&parent.contains(node))).slice(0,4);
+        if(!roots.length)break;
+        roots.forEach(node=>attempted.add(node.id));
+        await Promise.all(roots.map(node=>open(node.id.replace(/^node-/u,''),{background:true})));
+      }
+    })().finally(()=>{if(loadingAll===task){hydratedEpoch=generation;loadingAll=null;delete root.dataset.privateLoading;retryAll.hidden=failures.size===0;}});
+    loadingAll=task;return task;
   };
   form.addEventListener('submit',async event=>{
     event.preventDefault();const invitation=input.value;input.value='';status.textContent='正在登录…';
     const button=form.querySelector('[type="submit"]');button.disabled=true;
     try{
-      await session.login(invitation);close();if(pending)await open(pending);
+      await session.login(invitation);close();await hydrate();if(pending)await open(pending);
     }catch(error){if(error.name!=='AbortError')status.textContent=error.message;}finally{button.disabled=false;}
   });
   dialog.querySelector('[data-close]').onclick=close;
@@ -116,11 +135,8 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
     const id=win.location.hash.slice(1)||root.dataset.documentTitleSource;
     const target=id?doc.getElementById(id):null;
     const context=target?.closest('[data-rem-type="document"],[data-rem-type="dailyDocument"],[data-publication-state="protected"]');
-    if(loaded.size&&!loaded.has(context?.id)){
-      epoch++;controller?.abort();controller=null;clearContent();
-    }
     if(pending&&context?.id!=='node-'+pending){
-      epoch++;controller?.abort();controller=null;pending=null;close();closeError();
+      pending=null;close();closeError();
     }
     if(id&&id!==lastRequested){lastRequested=id;void open(id.replace(/^node-/u,''));}
     if(!id)lastRequested=null;
@@ -128,8 +144,11 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
   win.addEventListener('hashchange',focused);win.addEventListener('popstate',focused);
   win.addEventListener('pageshow',event=>{if(event.persisted){lastRequested=null;void session.ready.then(focused);}});
   win.addEventListener('personal-outline-focus-changed',focused);
-  void session.ready.then(focused);
-  return {wipe,open,dialog,request,showLogin:show,get ready(){return session.ready;},get user(){return session.user;},get epoch(){return session.epoch;},get authenticated(){return session.authenticated;}};
+  win.addEventListener('personal-outline-changed',()=>{
+    if(session.authenticated&&!loadingAll&&[...root.querySelectorAll('[data-publication-state="protected"]')].some(node=>loaded.has(node.id)&&node.dataset.privateLoaded!=='true'))void hydrate({retry:true});
+  });
+  void session.ready.then(async()=>{await hydrate();if(win.location.hash||root.dataset.documentTitleSource)focused();});
+  return {wipe,open,dialog,request,showLogin:show,get ready(){return session.ready.then(()=>hydrate());},get user(){return session.user;},get epoch(){return session.epoch;},get authenticated(){return session.authenticated;}};
 }
 
 if(typeof window!=='undefined'){
