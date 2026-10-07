@@ -3,14 +3,15 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const visible=element=>element.isConnected&&!element.closest('[hidden],[inert]')&&element.getClientRects().length>0;
 const nodeId=element=>element.id.replace(/^node-/u,'');
 
-export function attachCollaboration(session,{window:win=window}={}){
+export function attachCollaboration(session,{window:win=window,loadUI=()=>import('./panels.tsx')}={}){
   const doc=win.document;
-  let UI=null,api=null,user=null,timer=null,epoch=0,observer=null,refreshing=false,loading=false;
+  let UI=null,uiPromise=null,api=null,user=null,timer=null,epoch=0,observer=null,refreshing=null,startError=null;
   let inbox={items:[],unreadCount:0,version:0,nextOffset:null},index={},noticeError='',bell=null,bellHost=null;
   const anchors=new Map(),savers=new Set(),restored=new Set();
   const cancelled=()=>Object.assign(Error('登录状态已改变'),{name:'AbortError'});
   function clear(){
-    epoch++;user=null;api=null;clearInterval(timer);timer=null;observer?.disconnect();observer=null;
+    epoch++;user=null;api=null;win.clearInterval(timer);timer=null;observer?.disconnect();observer=null;refreshing=null;
+    startError?.remove();startError=null;
     bell?.dispose();bell=null;bellHost?.remove();bellHost=null;
     for(const a of anchors.values()){a.actions?.dispose();a.group?.dispose();a.editGroup?.dispose();a.actionHost?.remove();a.groupHost?.remove();a.editHost?.remove();restoreNative(a);cleanContainer(a);}
     anchors.clear();savers.clear();restored.clear();index={};inbox={items:[],unreadCount:0,version:0,nextOffset:null};
@@ -89,7 +90,7 @@ export function attachCollaboration(session,{window:win=window}={}){
     restored.add(restoredId);
     try{
       if(!await flushAll()){restored.delete(restoredId);return;}
-      // Reload only this canonical source branch; tokens remain in memory.
+      // Reload only this canonical source branch using the shared authenticated session.
       const documentNode=a.node.closest('[data-rem-type="document"],[data-rem-type="dailyDocument"]');
       const privateDocument=documentNode?.dataset.privateLoaded==='true';
       const raw=privateDocument?(await(await session.request('/documents/'+nodeId(documentNode))).json()).html:await(await fetch('/blog/',{cache:'no-store',credentials:'omit'})).text();
@@ -107,7 +108,7 @@ export function attachCollaboration(session,{window:win=window}={}){
     }catch(e){restored.delete(restoredId);noticeError=e.message;renderBell();}
   }
   async function poll(){
-    if(!api||refreshing)return;refreshing=true;const generation=epoch;
+    if(!api||refreshing===epoch)return;const generation=epoch;refreshing=generation;
     try{
       const [state,list,counts]=await Promise.all([api.get('session'),api.get('inbox'),api.get('index')]);
       if(generation!==epoch)return;
@@ -116,7 +117,7 @@ export function attachCollaboration(session,{window:win=window}={}){
       index=counts.entries;noticeError='';renderBell();scan();
       for(const a of anchors.values())if(a.data&&visible(a.node))void load(a).catch(()=>{});
       if(doc.querySelector('[data-recent-changes]'))await recentChanges();
-    }catch(e){if(e.name!=='AbortError'){noticeError=e.message;renderBell();}}finally{refreshing=false;}
+    }catch(e){if(generation===epoch&&e.name!=='AbortError'){noticeError=e.message;renderBell();}}finally{if(refreshing===generation)refreshing=null;}
   }
   async function jump(notice){
     let target=doc.getElementById('node-'+notice.anchorId);
@@ -127,7 +128,7 @@ export function attachCollaboration(session,{window:win=window}={}){
       }
     }
     if(!target){
-      // A different full-page document needs a fresh memory-only login.
+      // A different full-page document restores and validates the remembered session.
       win.location.href='/blog/?notification='+encodeURIComponent(notice.id)+'#node-'+notice.documentId;return;
     }
     win.location.hash='node-'+notice.anchorId;scan();
@@ -164,23 +165,30 @@ export function attachCollaboration(session,{window:win=window}={}){
     previous?previous.replaceWith(section):feed.before(section);
   }
   async function start(){
-    if(!session.authenticated){clear();return;}if(loading)return;loading=true;
+    if(!session.authenticated){clear();return;}
     clear();const generation=epoch;
     try{
-      UI??=await import('./panels.tsx');if(generation!==epoch)return;
+      uiPromise??=loadUI().catch(error=>{uiPromise=null;throw error;});UI??=await uiPromise;if(generation!==epoch)return;
       user=await request('session');api={user,get:route=>request(route),post:request,users:context=>request('mentions?'+new URLSearchParams(Object.entries(context).filter(([,v])=>v!==undefined)))};
       bellHost=doc.createElement('span');bellHost.className='collaboration-ui';(doc.querySelector('.site-header-inner')??doc.body).append(bellHost);
       bell=UI.mount(bellHost,UI.Bell,{inbox,onOpen:()=>void poll(),onJump:jump,onMore:()=>{}});
       observer=new win.MutationObserver(()=>queueMicrotask(scan));const root=doc.querySelector('.reading-outline');if(root)observer.observe(root,{childList:true,subtree:true});
-      await poll();timer=setInterval(()=>{if(doc.visibilityState!=='hidden')void poll();},15000);
+      scan();await poll();if(generation!==epoch)return;
+      timer=win.setInterval(()=>{if(doc.visibilityState!=='hidden')void poll();},15000);
       const notification=new URL(win.location.href).searchParams.get('notification');
       if(notification){const notice=inbox.items.find(n=>n.id===notification);if(notice)await jump(notice);}
-    }catch(e){if(e.name!=='AbortError'){noticeError=e.message;renderBell();}}finally{loading=false;}
+    }catch(e){if(generation===epoch&&e.name!=='AbortError'){
+      noticeError=e.message;renderBell();
+      if(!bell){
+        startError=doc.createElement('button');startError.type='button';startError.dataset.collaborationPrivate='';startError.textContent='协作加载失败，点击重试';startError.title=e.message;
+        startError.onclick=()=>void start();(doc.querySelector('.site-header-inner')??doc.body).append(startError);
+      }
+    }}
   }
   win.addEventListener('personal-session-changed',()=>void start());
   win.addEventListener('personal-outline-changed',()=>queueMicrotask(scan));
   win.addEventListener('personal-outline-focus-changed',()=>queueMicrotask(scan));
-  doc.addEventListener('visibilitychange',()=>{if(doc.visibilityState==='visible')void poll();});
+  doc.addEventListener('visibilitychange',()=>{if(doc.visibilityState==='visible'){if(session.authenticated&&!api)void start();else void poll();}});
   win.addEventListener('pagehide',clear);
   win.addEventListener('beforeunload',event=>{if([...doc.querySelectorAll('[data-proposal-id] [role=status]')].some(el=>/未保存|正在保存|保存失败|另一方/.test(el.textContent))){event.preventDefault();event.returnValue='';}});
   if(session.authenticated)void start();return {clear,poll};

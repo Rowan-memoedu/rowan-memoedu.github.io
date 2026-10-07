@@ -1,17 +1,21 @@
 import DOMPurify from 'dompurify';
+import {createInvitationSession} from './invitation-session.mjs';
 
-/** Credentials remain in this module's memory, never URL or browser storage. */
+/** Remember only the revocable session. Invitations and private bodies are never stored. */
 export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}={}){
   const doc=win.document,outline=doc.querySelector('.reading-outline'),root=outline??doc.body;
   const purifier=DOMPurify.sanitize?DOMPurify:DOMPurify(win);
-  const base=new URL(apiBase,win.location.href);
-  if(base.protocol!=='https:'&&!(base.protocol==='http:'&&['127.0.0.1','localhost'].includes(base.hostname)))throw Error('Private API requires HTTPS');
+  const session=createInvitationSession({window:win,apiBase,fetcher});
   const original=new Map([...root.querySelectorAll('[data-publication-state="protected"]')].map(node=>[node.id,node.cloneNode(true)]));
-  let token='',epoch=0,sessionEpoch=0,user=null,expiry=0,expiryTimer=null,pending=null,lastRequested=null,controller=null;
+  let epoch=0,pending=null,lastRequested=null,controller=null,opening=null;
   const loaded=new Set(),blobs=new Set(),privateSections=new Set();
   const dialog=doc.createElement('dialog');dialog.className='protected-login';
   dialog.innerHTML='<form method="dialog"><p><strong>此页面需登录后查看</strong></p><label>邀请码 <input name="invitation" type="password" autocomplete="off" maxlength="256" required></label><p role="status" aria-live="polite"></p><button type="submit">登录查看</button> <button type="button" data-close>取消</button></form>';
   doc.body.append(dialog);const form=dialog.querySelector('form'),input=form.elements.invitation,status=dialog.querySelector('[role="status"]');
+  const readError=doc.createElement('dialog');readError.className='protected-reading-error';
+  readError.innerHTML='<p role="status" aria-live="polite"></p><button type="button" data-retry>重试读取</button> <button type="button" data-close>关闭</button>';doc.body.append(readError);
+  const closeError=()=>{if(readError.close)readError.close();else readError.removeAttribute('open');};
+  readError.querySelector('[data-close]').onclick=closeError;
   const sessionButton=doc.createElement('button');sessionButton.type='button';sessionButton.textContent='邀请码登录';
   const mountSession=()=>{(doc.querySelector('.site-header-inner')??root.querySelector('.outline-toolbar-tools')??root).append(sessionButton);};mountSession();
   const refresh=()=>{if(outline)win.dispatchEvent(new win.CustomEvent('personal-outline-changed'));mountSession();};
@@ -21,22 +25,26 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
     for(const section of privateSections)section.remove();privateSections.clear();
     refresh();
   };
-  const wipe=()=>{
-    epoch++;sessionEpoch++;controller?.abort();controller=null;token='';user=null;expiry=0;
-    win.clearTimeout(expiryTimer);expiryTimer=null;delete root.dataset.privateSession;
-    sessionButton.textContent='邀请码登录';clearContent();win.dispatchEvent(new win.CustomEvent('personal-session-changed'));
-  };
-  const request=async(route,options={})=>{
-    const response=await fetcher(base.href.replace(/\/$/u,'')+route,{...options,credentials:'omit',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',headers:{...(options.headers??{}),...(token?{Authorization:'Bearer '+token}:{})}});
-    if(!response.ok){let message;try{message=(await response.json()).detail;}catch{}const error=Error(typeof message==='string'?message:response.status===403?'当前邀请码组无权查看此页面':response.status===429?'尝试过于频繁，请稍后重试':response.status===401?'邀请码无效、已停用或登录已过期':'页面暂不可读取，请重试');error.status=response.status;if(response.status===401&&token)wipe();throw error;}
-    return response;
-  };
+  const wipe=session.clear,request=session.request;let sessionStatus=session.status;
+  session.subscribe(()=>{
+    const restoredSession=sessionStatus==='checking'&&session.authenticated;sessionStatus=session.status;
+    epoch++;controller?.abort();controller=null;
+    if(session.authenticated)root.dataset.privateSession='active';else{delete root.dataset.privateSession;clearContent();closeError();}
+    sessionButton.textContent=session.authenticated?'退出登录':session.status==='unavailable'?'重试登录验证':'邀请码登录';refresh();
+    win.dispatchEvent(new win.CustomEvent('personal-session-changed'));
+    if(restoredSession){lastRequested=null;void session.ready.then(focused);}
+  });
   const show=()=>{status.textContent='';if(!dialog.open){if(dialog.showModal)dialog.showModal();else dialog.setAttribute('open','');input.focus();}};
   const close=()=>{if(dialog.close)dialog.close();else dialog.removeAttribute('open');input.value='';};
-  const open=async id=>{
+  const showReadError=(message,retry)=>{
+    readError.querySelector('[role="status"]').textContent=message;readError.querySelector('[data-retry]').onclick=()=>{closeError();void retry();};
+    if(!readError.open){if(readError.showModal)readError.showModal();else readError.setAttribute('open','');}
+  };
+  const retrySession=async id=>{await session.restore();if(session.status==='unavailable'){showReadError('登录验证暂不可用，请重试',()=>retrySession(id));return;}if(id)await open(id);else if(!session.authenticated)show();};
+  const loadDocument=async id=>{
     const target=doc.getElementById('node-'+id);if(!target||target.dataset.publicationState!=='protected'||loaded.has(target.id))return;
     pending=id;
-    if(!token||Date.now()/1000>=expiry){if(token)wipe();show();return;}
+    if(!session.authenticated){if(session.status==='unavailable')showReadError('登录验证暂不可用，请重试',()=>retrySession(id));else show();return;}
     const generation=epoch;controller?.abort();controller=new AbortController();const signal=controller.signal;
     try{
       const payload=await(await request('/documents/'+encodeURIComponent(id),{signal})).json();
@@ -78,24 +86,29 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
       }
       if(generation!==epoch||signal.aborted)return;
       replacement.dataset.publicationState='protected';replacement.dataset.privateLoaded='true';
-      doc.getElementById('node-'+id)?.replaceWith(replacement);loaded.add(replacement.id);refresh();close();
-    }catch(error){if(signal.aborted||generation!==epoch)return;if(error.status===401)wipe();if(!dialog.open)show();status.textContent=error.message;}
+      doc.getElementById('node-'+id)?.replaceWith(replacement);loaded.add(replacement.id);refresh();close();closeError();
+    }catch(error){
+      if(error.status===401&&!session.authenticated&&pending===id){show();status.textContent=error.message;return;}
+      if(signal.aborted||generation!==epoch)return;
+      if(!session.authenticated){show();status.textContent=error.message;return;}
+      showReadError(error.name==='AbortError'?'页面读取超时，请重试':error.message,()=>open(id));
+    }
+  };
+  const open=async id=>{
+    await session.ready;
+    if(opening?.id===id&&opening.generation===epoch)return opening.task;
+    const task=loadDocument(id);opening={id,generation:epoch,task};
+    try{return await task;}finally{if(opening?.task===task)opening=null;}
   };
   form.addEventListener('submit',async event=>{
     event.preventDefault();const invitation=input.value;input.value='';status.textContent='正在登录…';
     const button=form.querySelector('[type="submit"]');button.disabled=true;
     try{
-      wipe();const generation=epoch;controller=new AbortController();const signal=controller.signal;
-      const result=await(await request('/login',{signal,method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({invitation})})).json();
-      if(generation!==epoch||signal.aborted)return;
-      if(typeof result.token!=='string'||!Number.isFinite(result.expiresAt)||result.expiresAt<=Date.now()/1000)throw Error('登录响应无效');
-      token=result.token;user=result.user;expiry=result.expiresAt;sessionEpoch++;root.dataset.privateSession='active';
-      expiryTimer=win.setTimeout(wipe,Math.min(2147483647,Math.max(0,expiry*1000-Date.now())));
-      sessionButton.textContent='退出登录';refresh();close();win.dispatchEvent(new win.CustomEvent('personal-session-changed'));if(pending)await open(pending);
+      await session.login(invitation);close();if(pending)await open(pending);
     }catch(error){if(error.name!=='AbortError')status.textContent=error.message;}finally{button.disabled=false;}
   });
   dialog.querySelector('[data-close]').onclick=close;
-  sessionButton.onclick=async()=>{if(!token){show();return;}const previous=token;wipe();try{await request('/logout',{method:'POST',headers:{Authorization:'Bearer '+previous}});}catch{/* Local data is already cleared. */}};
+  sessionButton.onclick=async()=>{await session.ready;if(session.status==='unavailable'){await retrySession(pending);return;}if(!session.authenticated){show();return;}await session.logout();};
   root.addEventListener('click',event=>{
     const button=event.target.closest('[data-protected-open]');if(button){event.preventDefault();void open(button.dataset.protectedOpen);return;}
   });
@@ -107,14 +120,16 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
       epoch++;controller?.abort();controller=null;clearContent();
     }
     if(pending&&context?.id!=='node-'+pending){
-      epoch++;controller?.abort();controller=null;pending=null;close();
+      epoch++;controller?.abort();controller=null;pending=null;close();closeError();
     }
     if(id&&id!==lastRequested){lastRequested=id;void open(id.replace(/^node-/u,''));}
     if(!id)lastRequested=null;
   };
-  win.addEventListener('hashchange',focused);win.addEventListener('popstate',focused);win.addEventListener('pagehide',wipe);
+  win.addEventListener('hashchange',focused);win.addEventListener('popstate',focused);
+  win.addEventListener('pageshow',event=>{if(event.persisted){lastRequested=null;void session.ready.then(focused);}});
   win.addEventListener('personal-outline-focus-changed',focused);
-  focused();return {wipe,open,dialog,request,showLogin:show,get user(){return user;},get epoch(){return sessionEpoch;},get authenticated(){return !!token&&Date.now()/1000<expiry;}};
+  void session.ready.then(focused);
+  return {wipe,open,dialog,request,showLogin:show,get ready(){return session.ready;},get user(){return session.user;},get epoch(){return session.epoch;},get authenticated(){return session.authenticated;}};
 }
 
 if(typeof window!=='undefined'){
