@@ -1,0 +1,150 @@
+{
+  "schema": "pinned-upstream-v1",
+  "sources": [
+    {
+      "path": "plate/registry/ui/editor.tsx",
+      "url": "https://raw.githubusercontent.com/udecode/plate/a8607621c0b3f65a9efc65195ec7356183faf98a/apps/www/src/registry/ui/editor.tsx",
+      "sha256": "f9c84b79dd9850dbd9ba44915dbac70ec29fc0883546468326116a411e376d41"
+    },
+    {
+      "path": "plate/registry/ui/list-classic-node.tsx",
+      "url": "https://raw.githubusercontent.com/udecode/plate/a8607621c0b3f65a9efc65195ec7356183faf98a/apps/www/src/registry/ui/list-classic-node.tsx",
+      "sha256": "9aa8416a7e8e9ffb6b501caf3cf5a5d102ce2d1a42cf56de63a9391074367613"
+    },
+    {
+      "path": "plate/registry/ui/mention-node.tsx",
+      "url": "https://raw.githubusercontent.com/udecode/plate/a8607621c0b3f65a9efc65195ec7356183faf98a/apps/www/src/registry/ui/mention-node.tsx",
+      "sha256": "f73c3cc0b679b27e2c477c73677c312efe28d22fc349e64ca5f518e200bef9de"
+    },
+    {
+      "path": "plate/registry/ui/inline-combobox.tsx",
+      "url": "https://raw.githubusercontent.com/udecode/plate/a8607621c0b3f65a9efc65195ec7356183faf98a/apps/www/src/registry/ui/inline-combobox.tsx",
+      "sha256": "208369f034b18d98b68ab9617e16d1e29b8c276611c41a414e8b4ad3d04e7512"
+    },
+    {
+      "path": "plate/registry/ui/comment.tsx",
+      "url": "https://raw.githubusercontent.com/udecode/plate/a8607621c0b3f65a9efc65195ec7356183faf98a/apps/www/src/registry/ui/comment.tsx",
+      "sha256": "e989e7f0e9d10c7bad358fc1e8d8614d1f8fecce743c119f9cbedba09b4595b0"
+    },
+    {
+      "path": "plate/registry/ui/block-discussion.tsx",
+      "url": "https://raw.githubusercontent.com/udecode/plate/a8607621c0b3f65a9efc65195ec7356183faf98a/apps/www/src/registry/ui/block-discussion.tsx",
+      "sha256": "edbd16c9259116900a5f73e9eb742a6bc4e3da99347e9e7c0cd547accc039305"
+    },
+    {
+      "path": "plate/registry/ui/paragraph-node.tsx",
+      "url": "https://raw.githubusercontent.com/udecode/plate/a8607621c0b3f65a9efc65195ec7356183faf98a/apps/www/src/registry/ui/paragraph-node.tsx",
+      "sha256": "36a1d3b49d26cf3b6aed8ac9dd1d7d66c56215b1333979e5c1fb467ede76cae2"
+    },
+    {
+      "path": "plate/registry/ui/link-node.tsx",
+      "url": "https://raw.githubusercontent.com/udecode/plate/a8607621c0b3f65a9efc65195ec7356183faf98a/apps/www/src/registry/ui/link-node.tsx",
+      "sha256": "56b975bf295964c4d219e895c8cad78778dcac5fa3c8a087aa8938b6ffd18930"
+    },
+    {
+      "path": "plate/registry/ui/equation-node.tsx",
+      "url": "https://raw.githubusercontent.com/udecode/plate/a8607621c0b3f65a9efc65195ec7356183faf98a/apps/www/src/registry/ui/equation-node.tsx",
+      "sha256": "e8158dc0ef35dfa56ea59186dc1f6fa19d6d5070dc94553123c2743db233cbbb"
+    },
+    {
+      "path": "plate/registry/ui/code-node.tsx",
+      "url": "https://raw.githubusercontent.com/udecode/plate/a8607621c0b3f65a9efc65195ec7356183faf98a/apps/www/src/registry/ui/code-node.tsx",
+      "sha256": "8a7e0c49c8487010d4f719661459d2f7f5393c5ecd601c7e6284f9342e4903de"
+    },
+    {
+      "path": "plate/registry/hooks/use-mounted.ts",
+      "url": "https://raw.githubusercontent.com/udecode/plate/a8607621c0b3f65a9efc65195ec7356183faf98a/apps/www/src/registry/hooks/use-mounted.ts",
+      "sha256": "83cbdf111907c38fc8cba6ec3dcb8a8ea2a7e84d7e0abc66be4d6fbb1369b674"
+    },
+    {
+      "path": "plate/registry/lib/suggestion.ts",
+      "url": "https://raw.githubusercontent.com/udecode/plate/a8607621c0b3f65a9efc65195ec7356183faf98a/apps/www/src/registry/lib/suggestion.ts",
+      "sha256": "75e9e4724e9b3bad9dda4bb830fcc69d1a54144972fa4697bbdede9ac4dc5cc1"
+    },
+    {
+      "path": "plate/components/ui/button.tsx",
+      "url": "https://raw.githubusercontent.com/udecode/plate/a8607621c0b3f65a9efc65195ec7356183faf98a/apps/www/src/components/ui/button.tsx",
+      "sha256": "06dd8eae153d620c05f8c62420f8c34334b0360aef5a129050bc8dc52fcd5a07"
+    },
+    {
+      "path": "plate/components/ui/popover.tsx",
+      "url": "https://raw.githubusercontent.com/udecode/plate/a8607621c0b3f65a9efc65195ec7356183faf98a/apps/www/src/components/ui/popover.tsx",
+      "sha256": "9d996db1e817ca3748d45e004e385eedf88ff1ab031cdc0b80ede4474a5e97c0"
+    },
+    {
+      "path": "plate/components/ui/avatar.tsx",
+      "url": "https://raw.githubusercontent.com/udecode/plate/a8607621c0b3f65a9efc65195ec7356183faf98a/apps/www/src/components/ui/avatar.tsx",
+      "sha256": "690e55bd67b6b7daf2045c3bfafa4c4d3230358ac163cf9c9c089f9fbb5e0a0e"
+    },
+    {
+      "path": "plate/components/ui/checkbox.tsx",
+      "url": "https://raw.githubusercontent.com/udecode/plate/a8607621c0b3f65a9efc65195ec7356183faf98a/apps/www/src/components/ui/checkbox.tsx",
+      "sha256": "1204919eaea82cbf072fb8dfbd2f572ab429b53ee542b164b6411db401e50660"
+    },
+    {
+      "path": "plate/lib/utils.ts",
+      "url": "https://raw.githubusercontent.com/udecode/plate/a8607621c0b3f65a9efc65195ec7356183faf98a/apps/www/src/lib/utils.ts",
+      "sha256": "74e8fe9d0d680c442ed6adb13e7d119d6c210c19ae6c114313b2a72552be0883"
+    },
+    {
+      "path": "plate/LICENSE",
+      "url": "https://raw.githubusercontent.com/udecode/plate/a8607621c0b3f65a9efc65195ec7356183faf98a/apps/www/LICENSE",
+      "sha256": "12baed97cff6ca96e5c5551b4b864ac9ab39d5acfa11d0867953ab42f46619e3"
+    },
+    {
+      "path": "plate/globals.css",
+      "url": "https://raw.githubusercontent.com/udecode/plate/a8607621c0b3f65a9efc65195ec7356183faf98a/apps/www/src/app/globals.css",
+      "sha256": "d2781e336b58719eaad3d8b3e8dec5e72029bb8b6fe793da8aed4e88230d9a56"
+    },
+    {
+      "path": "echo/COPYING",
+      "url": "https://raw.githubusercontent.com/wikimedia/mediawiki-extensions-Echo/d2b5cdfa6c7d4603f93bc0787c26fdf963a05c3b/COPYING",
+      "sha256": "2b7a34ab91b476b4f4b73fba02041d7ff384e897a82f00258d36f802e9e506ba"
+    },
+    {
+      "path": "echo/modules/echo.variables.less",
+      "url": "https://raw.githubusercontent.com/wikimedia/mediawiki-extensions-Echo/d2b5cdfa6c7d4603f93bc0787c26fdf963a05c3b/modules/echo.variables.less",
+      "sha256": "71e3d599b119ad64f1b9ee000092a5a58098b1a74a083142362b40d7243c5b24"
+    },
+    {
+      "path": "echo/modules/echo.mixins.less",
+      "url": "https://raw.githubusercontent.com/wikimedia/mediawiki-extensions-Echo/d2b5cdfa6c7d4603f93bc0787c26fdf963a05c3b/modules/echo.mixins.less",
+      "sha256": "fc533a82ad5f312a3cca25e185160870a7a65c6905cb7ee060a26c05b49d0bd1"
+    },
+    {
+      "path": "echo/modules/nojs/mw.echo.badge.less",
+      "url": "https://raw.githubusercontent.com/wikimedia/mediawiki-extensions-Echo/d2b5cdfa6c7d4603f93bc0787c26fdf963a05c3b/modules/nojs/mw.echo.badge.less",
+      "sha256": "187ca10c9a122b0f689260abccf290d32b60c66f4dda65cc1d5e2d3a1dd679eb"
+    },
+    {
+      "path": "echo/modules/nojs/mw.echo.notifications.less",
+      "url": "https://raw.githubusercontent.com/wikimedia/mediawiki-extensions-Echo/d2b5cdfa6c7d4603f93bc0787c26fdf963a05c3b/modules/nojs/mw.echo.notifications.less",
+      "sha256": "dcd0fc5870ec4a8564a96732976916d37b3124a4ca2fbab91e298d8766fa3438"
+    },
+    {
+      "path": "echo/modules/styles/mw.echo.ui.NotificationItemWidget.less",
+      "url": "https://raw.githubusercontent.com/wikimedia/mediawiki-extensions-Echo/d2b5cdfa6c7d4603f93bc0787c26fdf963a05c3b/modules/styles/mw.echo.ui.NotificationItemWidget.less",
+      "sha256": "6bc1671beed16c1c725a51fe9ebeca684f849dcc29a15329e8b62bfe4dbc0a9b"
+    },
+    {
+      "path": "echo/modules/styles/mw.echo.ui.NotificationsListWidget.less",
+      "url": "https://raw.githubusercontent.com/wikimedia/mediawiki-extensions-Echo/d2b5cdfa6c7d4603f93bc0787c26fdf963a05c3b/modules/styles/mw.echo.ui.NotificationsListWidget.less",
+      "sha256": "159c79372464a315e063e4106d662ea8d23f909b2475684fe0a6adaeb676801d"
+    },
+    {
+      "path": "echo/modules/ui/mw.echo.ui.SingleNotificationItemWidget.js",
+      "url": "https://raw.githubusercontent.com/wikimedia/mediawiki-extensions-Echo/d2b5cdfa6c7d4603f93bc0787c26fdf963a05c3b/modules/ui/mw.echo.ui.SingleNotificationItemWidget.js",
+      "sha256": "ad668c9d50fbeffb7cbb09244dcaf3c8aa05d9ead803ba54be431c1cbde6d62b"
+    },
+    {
+      "path": "echo/modules/ui/mw.echo.ui.NotificationItemWidget.js",
+      "url": "https://raw.githubusercontent.com/wikimedia/mediawiki-extensions-Echo/d2b5cdfa6c7d4603f93bc0787c26fdf963a05c3b/modules/ui/mw.echo.ui.NotificationItemWidget.js",
+      "sha256": "19397c7986d96cba8c894f1e0738f3e18db0c33c25753d5d8294afc7319cdc20"
+    },
+    {
+      "path": "echo/modules/ui/mw.echo.ui.NotificationsListWidget.js",
+      "url": "https://raw.githubusercontent.com/wikimedia/mediawiki-extensions-Echo/d2b5cdfa6c7d4603f93bc0787c26fdf963a05c3b/modules/ui/mw.echo.ui.NotificationsListWidget.js",
+      "sha256": "7db232db601f03c0b8ca5cf507976c1302276644099cdbebca6a5070ea7a9a62"
+    }
+  ]
+}
