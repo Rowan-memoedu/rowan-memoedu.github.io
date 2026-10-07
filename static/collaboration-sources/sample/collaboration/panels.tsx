@@ -40,8 +40,9 @@ function Message({message,thread,onReply,highlight,children,composer}:any){
     <button className="collaboration-reply-button" type="button" onClick={()=>onReply(message.id)}>回复</button>{composer}{children}
   </article>;
 }
-export function DiscussionPanel({api,anchorId,data,proposalId,proposalNodeId,refresh,highlight,onClose}:any){
-  const threads=data.threads.filter((t:any)=>proposalId?t.proposalId===proposalId&&t.proposalNodeId===proposalNodeId:!t.proposalId||!data.proposals.some((p:any)=>p.id===t.proposalId&&p.status!=='accepted'));
+const originalThread=(data:any,t:any)=>!t.proposalId||!data.proposals.some((p:any)=>p.id===t.proposalId&&p.status!=='accepted');
+export function DiscussionPanel({api,anchorId,data,proposalId,proposalNodeId,includeOriginal=false,refresh,highlight,onClose}:any){
+  const threads=data.threads.filter((t:any)=>(proposalId?t.proposalId===proposalId&&t.proposalNodeId===proposalNodeId:originalThread(data,t))||(includeOriginal&&originalThread(data,t)));
   const [reply,setReply]=useState<string|null>(null);
   useEffect(()=>{if(!highlight)return;const el=document.getElementById('collab-'+highlight);el?.scrollIntoView({block:'center'});el?.focus({preventScroll:true});},[highlight,data]);
   function branch(thread:any,parent:string|null=null,depth=0):any{
@@ -95,6 +96,8 @@ function Proposal({api,proposal,anchorId,data,refresh,onAccepted,registerSave,no
   }
   const adopting=proposal.status!=='draft';
   const comments=Object.fromEntries(data.threads.filter((t:any)=>t.proposalId===proposal.id).map((t:any)=>[t.proposalNodeId,data.threads.filter((x:any)=>x.proposalId===proposal.id&&x.proposalNodeId===t.proposalNodeId).length]));
+  const rootId=proposal.editRootId??proposal.nodes[0]?.id;
+  if(proposal.kind==='edit')comments[rootId]=(comments[rootId]??0)+data.threads.filter((t:any)=>originalThread(data,t)).length;
   async function removeEmpty(children:any=[]){save.current.change(children);if(await save.current.flush())await refresh();}
   return <div className="collaboration-contribution" data-proposal-id={proposal.id} data-status={proposal.status}>
     <div className={adopting||['error','conflict'].includes(state)?'collaboration-save-state':'collaboration-visually-hidden'}><span role="status">{adopting?(proposal.status==='accepted'?'已采纳':proposal.operation?.status==='attention'?'同步需要核查，请站长查看本机记录':proposal.operation?.status==='retry'?'发布暂未完成，将继续重试':'正在同步到 RemNote 并发布…'):statusText[state]}</span>
@@ -105,7 +108,7 @@ function Proposal({api,proposal,anchorId,data,refresh,onAccepted,registerSave,no
     {state==='conflict'&&<div><Button variant="outline" size="sm" onClick={()=>void conflict()}>对照最新版本</Button>{remote&&<><p>对方的最新内容：</p><RichEditor key={'remote-'+remote.revision} initial={remote.nodes} tree readOnly/>
       <Button size="sm" variant="outline" onClick={()=>resolveConflict(false)}>载入对方版本</Button> <Button size="sm" onClick={()=>resolveConflict(true)}>保留我的内容继续编辑</Button></>}</div>}
     {preview&&<div role="region" aria-label="正式正文预览" className="collaboration-adoption-preview"><p>{preview.kind==='edit'?'更新原节点文字，保留原 ID 和已有子节点。':'只采纳所选节点及其子树。'}@ 标记不会写入正式正文。</p><Projection nodes={preview.nodes}/><Button size="sm" onClick={()=>void approve()}>确认采纳</Button> <Button variant="ghost" size="sm" onClick={()=>setPreview(null)}>取消</Button></div>}
-    {commentNode&&<div className="collaboration-inline-discussion"><DiscussionPanel api={api} anchorId={anchorId} data={data} proposalId={proposal.id} proposalNodeId={commentNode} refresh={refresh} highlight={notificationTarget?.sourceId} onClose={()=>setCommentNode(null)}/></div>}
+    {commentNode&&<div className="collaboration-inline-discussion"><DiscussionPanel api={api} anchorId={anchorId} data={data} proposalId={proposal.id} proposalNodeId={commentNode} includeOriginal={proposal.kind==='edit'&&commentNode===rootId} refresh={refresh} highlight={notificationTarget?.sourceId} onClose={()=>setCommentNode(null)}/></div>}
   </div>;
 }
 function Projection({nodes}:any){return <RichEditor initial={nodes} tree preview readOnly label="正式正文预览编辑器"/>;}
