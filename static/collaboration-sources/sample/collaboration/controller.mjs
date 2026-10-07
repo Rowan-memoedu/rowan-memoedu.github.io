@@ -46,7 +46,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
         if(!container){container=doc.createElement('ul');container.dataset.collaborationContainer='';a.node.append(container);}
         const host=doc.createElement(container.tagName==='UL'?'li':'div');host.className='collaboration-ui collaboration-proposals';host.dataset.collaborationPrivate='';
         container.prepend(host);a.groupHost=host;a.group=UI.mount(host,UI.ProposalGroup,groupProps(a));
-        win.dispatchEvent(new win.CustomEvent('personal-outline-changed'));
+        win.dispatchEvent(new win.CustomEvent('personal-outline-changed',{detail:{nodeIds:[a.node.id]}}));
       }else a.group.update(groupProps(a));
     }else if(a.group){a.group.dispose();a.groupHost.remove();a.group=null;a.groupHost=null;cleanContainer(a);}
     if(a.data?.proposals.some(p=>p.kind==='edit')){
@@ -61,7 +61,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     }else if(a.editGroup){a.editGroup.dispose();a.editHost.remove();a.editGroup=null;a.editHost=null;restoreNative(a);}
   }
   function restoreNative(a){a.native?.forEach(({el,hidden})=>{el.hidden=hidden;});a.native=null;delete a.node.dataset.collaborationEditing;}
-  function cleanContainer(a){const container=a.node.querySelector(':scope > [data-collaboration-container]');if(container&&!container.children.length){container.remove();win.dispatchEvent(new win.CustomEvent('personal-outline-changed'));}}
+  function cleanContainer(a){const container=a.node.querySelector(':scope > [data-collaboration-container]');if(container&&!container.children.length){container.remove();win.dispatchEvent(new win.CustomEvent('personal-outline-changed',{detail:{nodeIds:[a.node.id]}}));}}
   async function load(a,refresh=false){
     if(a.loading){await a.loading;return a.data;}
     const generation=epoch;
