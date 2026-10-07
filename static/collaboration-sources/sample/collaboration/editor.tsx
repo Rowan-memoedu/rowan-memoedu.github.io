@@ -88,6 +88,8 @@ export function RichEditor({initial,tree=false,inlineRoot=false,preview=false,re
   const changed=()=>{if(readOnly||composing.current)return;try{onChange?.(tree?fromTree(editor.children):fromComment(editor.children));setError('');}catch(e:any){setError(e.message);}};
   function keydown(e:React.KeyboardEvent){
     if(readOnly||composing.current||e.nativeEvent.isComposing)return;
+    const target=e.target as HTMLElement;
+    if(target!==e.currentTarget&&(!e.currentTarget.contains(target)||target.closest('input,textarea,[contenteditable="false"]')))return;
     if(tree&&!editor.selection)editor.tf.select(editor.api.start([]));
     const handled=()=>{e.preventDefault();e.stopPropagation();};
     if((e.ctrlKey||e.metaKey)&&!e.altKey){
