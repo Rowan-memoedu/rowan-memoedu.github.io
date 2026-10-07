@@ -1,0 +1,21 @@
+/* Scope/placement changes only; component layouts come from pinned Plate/Echo. */
+.collaboration-ui { color: var(--foreground); font-family: inherit; line-height: 1.5; }
+.collaboration-ui, .collaboration-ui * { box-sizing: border-box; }
+.collaboration-ui button, .collaboration-ui input, .collaboration-ui textarea { font-family: inherit; }
+.collaboration-ui button { cursor: pointer; }
+.collaboration-ui [hidden] { display: none !important; }
+.collaboration-ui svg { display: inline-block; vertical-align: middle; }
+.collaboration-ui p, .collaboration-ui h4 { margin-block: 0; }
+.collaboration-ui [data-slate-editor] { min-height: 2em; }
+.collaboration-ui [data-slate-editor] ul { padding-inline-start: 1.5em; list-style-type: disc; }
+.collaboration-ui [data-slate-editor] li { display: list-item; }
+.collaboration-ui .collaboration-contribution[data-status="draft"] li::marker,
+.collaboration-ui .collaboration-contribution[data-status="adopting"] li::marker { color: #c62828; }
+.node-content { position: relative; }
+.collaboration-actions { display: inline-flex; vertical-align: middle; margin-inline-start: .5em; }
+.collaboration-node-action { margin-inline-start: .5em; user-select: none; }
+.collaboration-proposals { list-style: none; margin-block: .5em; }
+.collaboration-ui [data-highlight="true"] { outline: 2px solid var(--brand); outline-offset: 3px; }
+.collaboration-bell-icon { width: 20px; height: 20px; color: #202122; position: absolute; inset: 0; }
+.collaboration-ui .mw-echo-notifications-badge { background: transparent; border: 0; padding: 0; }
+.collaboration-ui [data-proposal-id]+[data-proposal-id] { margin-top: 1em; }
