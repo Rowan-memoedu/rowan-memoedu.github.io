@@ -7,12 +7,12 @@ const nodeId=element=>element.id.replace(/^node-/u,'');
 export function attachCollaboration(session,{window:win=window,loadUI=()=>import('./panels.tsx')}={}){
   const doc=win.document;
   const localUpdates=createLocalUpdates(win);
-  let UI=null,uiPromise=null,api=null,user=null,timer=null,epoch=0,observer=null,refreshing=null,startError=null;
+  let UI=null,uiPromise=null,api=null,user=null,timer=null,epoch=0,observer=null,refreshing=null,startError=null,scanQueued=null;
   let inbox={items:[],unreadCount:0,version:0,nextOffset:null},index={},noticeError='',bell=null,bellHost=null;
   const anchors=new Map(),savers=new Set(),restored=new Set();
   const cancelled=()=>Object.assign(Error('登录状态已改变'),{name:'AbortError'});
   function clear(){
-    epoch++;user=null;api=null;win.clearInterval(timer);timer=null;observer?.disconnect();observer=null;refreshing=null;
+    epoch++;scanQueued=null;user=null;api=null;win.clearInterval(timer);timer=null;observer?.disconnect();observer=null;refreshing=null;
     startError?.remove();startError=null;
     bell?.dispose();bell=null;bellHost?.remove();bellHost=null;
     for(const a of anchors.values()){win.clearTimeout(a.syncTimer);a.actions?.dispose();a.group?.dispose();a.editGroup?.dispose();a.actionHost?.remove();a.groupHost?.remove();a.editHost?.remove();restoreNative(a);cleanContainer(a);}
@@ -79,6 +79,18 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     // Wait for React to commit before moving focus to the empty new child.
     for(let i=0;i<20;i++){const fields=(mode==='edit'?a.editHost:a.groupHost)?.querySelectorAll('[contenteditable=true]');if(fields?.length){fields[fields.length-1].focus();break;}await delay(40);}
   }
+  function scheduleScan(){
+    if(scanQueued)return;
+    const ticket={generation:epoch};scanQueued=ticket;
+    queueMicrotask(()=>{if(scanQueued!==ticket)return;scanQueued=null;if(ticket.generation===epoch)scan();});
+  }
+  function sourceChanged(records){
+    // React, Slate and media controls change their own DOM. They are not new
+    // source nodes and must not feed an update back into every React root.
+    return records.some(record=>!record.target.closest?.('.collaboration-ui,[data-collaboration-private]')&&
+      [...record.addedNodes,...record.removedNodes].some(node=>node.nodeType===1&&
+        (node.matches('.outline-node,.node-content')||node.querySelector('.outline-node,.node-content'))));
+  }
   function scan(){
     if(!api||!UI)return;
     for(const [id,a] of anchors)if(!a.node.isConnected){win.clearTimeout(a.syncTimer);a.actions.dispose();a.group?.dispose();a.editGroup?.dispose();restoreNative(a);anchors.delete(id);}
@@ -90,7 +102,8 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
         const host=doc.createElement('span');host.className='collaboration-ui collaboration-actions';host.dataset.collaborationPrivate='';content.append(host);
         a={id,node,actionHost:host};a.actions=UI.mount(host,UI.Actions,actionProps(a));anchors.set(id,a);
       }
-      render(a);
+      const state=JSON.stringify([index[id]??null,user?.id,user?.name,user?.owner]);
+      if(a.renderState!==state){a.renderState=state;render(a);}
       if(index[id]?.proposals&&visible(node)&&!a.data&&!a.loading)void load(a).catch(()=>{});
     }
   }
@@ -185,7 +198,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
       user=await request('session');api={user,get:route=>request(route),post:request,users:context=>request('mentions?'+new URLSearchParams(Object.entries(context).filter(([,v])=>v!==undefined)))};
       bellHost=doc.createElement('span');bellHost.className='collaboration-ui';(doc.querySelector('.site-header-inner')??doc.body).append(bellHost);
       bell=UI.mount(bellHost,UI.Bell,{inbox,onOpen:()=>void poll(),onJump:jump,onMore:()=>{}});
-      observer=new win.MutationObserver(()=>queueMicrotask(scan));const root=doc.querySelector('.reading-outline');if(root)observer.observe(root,{childList:true,subtree:true});
+      observer=new win.MutationObserver(records=>{if(sourceChanged(records))scheduleScan();});const root=doc.querySelector('.reading-outline');if(root)observer.observe(root,{childList:true,subtree:true});
       scan();await poll();if(generation!==epoch)return;
       timer=win.setInterval(()=>{if(doc.visibilityState!=='hidden')void poll();},15000);
       const notification=new URL(win.location.href).searchParams.get('notification');
@@ -199,8 +212,8 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     }}
   }
   win.addEventListener('personal-session-changed',()=>void start());
-  win.addEventListener('personal-outline-changed',()=>queueMicrotask(scan));
-  win.addEventListener('personal-outline-focus-changed',()=>queueMicrotask(scan));
+  win.addEventListener('personal-outline-changed',scheduleScan);
+  win.addEventListener('personal-outline-focus-changed',scheduleScan);
   doc.addEventListener('visibilitychange',()=>{if(doc.visibilityState==='visible'){if(session.authenticated&&!api)void start();else void poll();}});
   win.addEventListener('pagehide',clear);
   win.addEventListener('beforeunload',event=>{if([...doc.querySelectorAll('[data-proposal-id] [role=status]')].some(el=>/未保存|正在保存|保存失败|另一方/.test(el.textContent))){event.preventDefault();event.returnValue='';}});
