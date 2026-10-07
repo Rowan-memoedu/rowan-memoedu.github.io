@@ -47,6 +47,7 @@
 .collaboration-message > header { display:flex; align-items:center; gap:8px; }
 .collaboration-message time { margin-left:auto; font-size:11px; color:#64748b; }
 .collaboration-message-body { margin:7px 0 3px 32px; }
+.collaboration-deleted-message { color:#64748b; font-size:13px; }
 .collaboration-reply-reference { color:#64748b; font-size:12px; margin:5px 0 0 32px; }
 .collaboration-reply-button { border:0; background:transparent; color:#0645ad; font-size:12px; margin-left:32px; padding:2px 0; cursor:pointer; }
 .collaboration-replies { margin:10px 0 0 12px; padding-left:12px; border-left:2px solid #d6e1ef; }

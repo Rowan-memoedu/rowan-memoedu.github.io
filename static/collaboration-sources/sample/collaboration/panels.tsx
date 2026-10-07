@@ -31,13 +31,17 @@ function Composer({api,anchorId,thread,proposalId,proposalNodeId,replyTo,onSent,
       <div className="collaboration-composer-footer"><span>Ctrl + Enter 发送</span>{onCancel&&<button type="button" onClick={onCancel}>取消</button>}<Button variant="ghost" size="icon-xs" aria-label="发送批注或回复" disabled={busy||!textOf(runs).trim()} onClick={()=>void submit()}><ArrowUpIcon className="size-4"/></Button></div>
       {error&&<p role="status" className="collaboration-error">{error}</p>}</div></div>;
 }
-function Message({message,thread,onReply,highlight,children,composer}:any){
+function Message({message,thread,onReply,onDelete,highlight,children,composer}:any){
+  const [confirm,setConfirm]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const replied=thread.messages.find((m:any)=>m.id===message.replyTo);
+  async function remove(){setBusy(true);setError('');try{await onDelete(message.id);setConfirm(false);}catch(e:any){setError(e.message);}finally{setBusy(false);}}
   return <article id={'collab-'+message.id} tabIndex={-1} className="collaboration-message" data-message-id={message.id} data-highlight={highlight===message.id}>
     <header><Avatar className="size-6"><AvatarFallback>{message.authorName[0]}</AvatarFallback></Avatar><strong>{message.authorName}</strong><time>{date(message.createdAt)}</time></header>
     {replied&&<div className="collaboration-reply-reference">回复 {replied.authorName}</div>}
-    <div className="collaboration-message-body"><RichEditor initial={message.content} readOnly label="批注内容"/></div>
-    <button className="collaboration-reply-button" type="button" onClick={()=>onReply(message.id)}>回复</button>{composer}{children}
+    <div className="collaboration-message-body">{message.deleted?<p className="collaboration-deleted-message">此评论已删除</p>:<RichEditor initial={message.content} readOnly label="批注内容"/>}</div>
+    {!message.deleted&&<><button className="collaboration-reply-button" type="button" onClick={()=>onReply(message.id)}>回复</button>{message.canDelete&&<button className="collaboration-reply-button" type="button" onClick={()=>setConfirm(true)}>删除</button>}</>}
+    {confirm&&!message.deleted&&<div role="group" aria-label="删除评论确认"><span>删除这条评论？</span> <button type="button" disabled={busy} onClick={()=>void remove()}>确认删除</button> <button type="button" disabled={busy} onClick={()=>setConfirm(false)}>取消</button></div>}
+    {error&&<p role="status" className="collaboration-error">{error}</p>}{!message.deleted&&composer}{children}
   </article>;
 }
 const originalThread=(data:any,t:any)=>!t.proposalId||!data.proposals.some((p:any)=>p.id===t.proposalId&&p.status!=='accepted');
@@ -46,7 +50,7 @@ export function DiscussionPanel({api,anchorId,data,proposalId,proposalNodeId,inc
   const [reply,setReply]=useState<string|null>(null);
   useEffect(()=>{if(!highlight)return;const el=document.getElementById('collab-'+highlight);el?.scrollIntoView({block:'center'});el?.focus({preventScroll:true});},[highlight,data]);
   function branch(thread:any,parent:string|null=null,depth=0):any{
-    return thread.messages.filter((m:any)=>m.replyTo===parent||(!parent&&!thread.messages.some((x:any)=>x.id===m.replyTo))).map((message:any)=><Message key={message.id} thread={thread} message={message} highlight={highlight} onReply={setReply} composer={reply===message.id?<Composer api={api} anchorId={anchorId} thread={thread} replyTo={message.id} onCancel={()=>setReply(null)} onSent={async()=>{await refresh();setReply(null);}}/>:null}>
+    return thread.messages.filter((m:any)=>m.replyTo===parent||(!parent&&!thread.messages.some((x:any)=>x.id===m.replyTo))).map((message:any)=><Message key={message.id} thread={thread} message={message} highlight={highlight} onReply={setReply} onDelete={async(messageId:string)=>{await api.post('messages/delete',{requestId:crypto.randomUUID(),threadId:thread.id,messageId});if(reply===messageId)setReply(null);await refresh();}} composer={reply===message.id?<Composer api={api} anchorId={anchorId} thread={thread} replyTo={message.id} onCancel={()=>setReply(null)} onSent={async()=>{await refresh();setReply(null);}}/>:null}>
       {thread.messages.some((m:any)=>m.replyTo===message.id)&&<div className={'collaboration-replies '+(depth>=2?'collaboration-replies-flat':'')}>{branch(thread,message.id,depth+1)}</div>}
     </Message>);
   }
