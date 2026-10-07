@@ -15,7 +15,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     epoch++;user=null;api=null;win.clearInterval(timer);timer=null;observer?.disconnect();observer=null;refreshing=null;
     startError?.remove();startError=null;
     bell?.dispose();bell=null;bellHost?.remove();bellHost=null;
-    for(const a of anchors.values()){a.actions?.dispose();a.group?.dispose();a.editGroup?.dispose();a.actionHost?.remove();a.groupHost?.remove();a.editHost?.remove();restoreNative(a);cleanContainer(a);}
+    for(const a of anchors.values()){win.clearTimeout(a.syncTimer);a.actions?.dispose();a.group?.dispose();a.editGroup?.dispose();a.actionHost?.remove();a.groupHost?.remove();a.editHost?.remove();restoreNative(a);cleanContainer(a);}
     anchors.clear();savers.clear();restored.clear();index={};inbox={items:[],unreadCount:0,version:0,nextOffset:null};
     localUpdates.clear();
     for(const el of doc.querySelectorAll('[data-collaboration-private]'))el.remove();
@@ -39,6 +39,9 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
   function groupProps(a){return {api,anchorId:a.id,data:a.data,refresh:()=>load(a,true),onAccepted:proposal=>restore(a,proposal),registerSave,notificationTarget:a.target};}
   function render(a){
     if(!a.node.isConnected)return;
+    if(a.data?.proposals.some(p=>p.status==='adopting')&&doc.visibilityState!=='hidden'){
+      a.syncTimer??=win.setTimeout(()=>{a.syncTimer=null;if(api&&a.node.isConnected)void load(a).catch(()=>{});},1200);
+    }else{win.clearTimeout(a.syncTimer);a.syncTimer=null;}
     a.actions.update(actionProps(a));
     if(a.data?.proposals.some(p=>p.kind!=='edit')){
       if(!a.group){
@@ -78,7 +81,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
   }
   function scan(){
     if(!api||!UI)return;
-    for(const [id,a] of anchors)if(!a.node.isConnected){a.actions.dispose();a.group?.dispose();a.editGroup?.dispose();restoreNative(a);anchors.delete(id);}
+    for(const [id,a] of anchors)if(!a.node.isConnected){win.clearTimeout(a.syncTimer);a.actions.dispose();a.group?.dispose();a.editGroup?.dispose();restoreNative(a);anchors.delete(id);}
     for(const node of doc.querySelectorAll('.reading-outline .outline-node[id^="node-r-"]')){
       if(node.dataset.localSynced==='true'||node.dataset.layoutOnly==='true'||(node.dataset.publicationState==='protected'&&node.dataset.privateLoaded!=='true'))continue;
       const id=nodeId(node);let a=anchors.get(id);
