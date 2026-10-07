@@ -90,7 +90,7 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
       }
       if(generation!==epoch||signal.aborted)return;
       replacement.dataset.publicationState='protected';replacement.dataset.privateLoaded='true';
-      doc.getElementById('node-'+id)?.replaceWith(replacement);loaded.add(replacement.id);failures.delete(id);refresh();if(!background){close();closeError();}return true;
+      doc.getElementById('node-'+id)?.replaceWith(replacement);loaded.add(replacement.id);failures.delete(id);if(!background){refresh();close();closeError();}return true;
     }catch(error){
       if(background){if(!signal.aborted&&generation===epoch&&![401,403,404].includes(error.status))failures.add(id);return false;}
       if(error.status===401&&!session.authenticated&&pending===id){show();status.textContent=error.message;return;}
@@ -107,16 +107,16 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
   };
   const hydrate=({retry=false}={})=>{
     if(!session.authenticated)return Promise.resolve();if(loadingAll)return loadingAll;if(!retry&&hydratedEpoch===epoch)return Promise.resolve();
-    const generation=epoch,attempted=new Set();root.dataset.privateLoading='true';
+    const generation=epoch,attempted=new Map();root.dataset.privateLoading='true';
     const task=(async()=>{
       while(generation===epoch&&session.authenticated){
-        const candidates=[...root.querySelectorAll('[data-publication-state="protected"]')].filter(node=>node.dataset.privateLoaded!=='true'&&!attempted.has(node.id));
+        const candidates=[...root.querySelectorAll('[data-publication-state="protected"]')].filter(node=>node.dataset.privateLoaded!=='true'&&attempted.get(node.id)!==node);
         const roots=candidates.filter(node=>!candidates.some(parent=>parent!==node&&parent.contains(node))).slice(0,4);
         if(!roots.length)break;
-        roots.forEach(node=>attempted.add(node.id));
+        roots.forEach(node=>attempted.set(node.id,node));
         await Promise.all(roots.map(node=>open(node.id.replace(/^node-/u,''),{background:true})));
       }
-    })().finally(()=>{if(loadingAll===task){hydratedEpoch=generation;loadingAll=null;delete root.dataset.privateLoading;retryAll.hidden=failures.size===0;}});
+    })().finally(()=>{if(loadingAll===task){hydratedEpoch=generation;loadingAll=null;delete root.dataset.privateLoading;retryAll.hidden=failures.size===0;refresh();}});
     loadingAll=task;return task;
   };
   form.addEventListener('submit',async event=>{

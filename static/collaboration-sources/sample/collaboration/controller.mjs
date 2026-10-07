@@ -1,10 +1,12 @@
 import DOMPurify from 'dompurify';
+import {createLocalUpdates} from './local-updates.mjs';
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const visible=element=>element.isConnected&&!element.closest('[hidden],[inert]')&&element.getClientRects().length>0;
 const nodeId=element=>element.id.replace(/^node-/u,'');
 
 export function attachCollaboration(session,{window:win=window,loadUI=()=>import('./panels.tsx')}={}){
   const doc=win.document;
+  const localUpdates=createLocalUpdates(win);
   let UI=null,uiPromise=null,api=null,user=null,timer=null,epoch=0,observer=null,refreshing=null,startError=null;
   let inbox={items:[],unreadCount:0,version:0,nextOffset:null},index={},noticeError='',bell=null,bellHost=null;
   const anchors=new Map(),savers=new Set(),restored=new Set();
@@ -15,6 +17,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     bell?.dispose();bell=null;bellHost?.remove();bellHost=null;
     for(const a of anchors.values()){a.actions?.dispose();a.group?.dispose();a.editGroup?.dispose();a.actionHost?.remove();a.groupHost?.remove();a.editHost?.remove();restoreNative(a);cleanContainer(a);}
     anchors.clear();savers.clear();restored.clear();index={};inbox={items:[],unreadCount:0,version:0,nextOffset:null};
+    localUpdates.clear();
     for(const el of doc.querySelectorAll('[data-collaboration-private]'))el.remove();
   }
   async function request(route,body){
@@ -61,7 +64,11 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
   function cleanContainer(a){const container=a.node.querySelector(':scope > [data-collaboration-container]');if(container&&!container.children.length){container.remove();win.dispatchEvent(new win.CustomEvent('personal-outline-changed'));}}
   async function load(a,refresh=false){
     if(a.loading){await a.loading;return a.data;}
-    a.loading=(async()=>{a.data=await api.get('anchors/'+a.id);render(a);})();
+    const generation=epoch;
+    a.loading=(async()=>{
+      try{const data=await api.get('anchors/'+a.id);if(generation!==epoch||!a.node.isConnected)return; a.data=data;render(a);localUpdates.apply(a.id,data.localUpdates??[]);}
+      catch(error){if(generation===epoch&&[401,403,404].includes(error.status)){localUpdates.remove(a.id);a.data=null;render(a);}throw error;}
+    })();
     try{await a.loading;if(refresh)void poll();return a.data;}finally{a.loading=null;}
   }
   async function add(a,mode='add'){
@@ -73,7 +80,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     if(!api||!UI)return;
     for(const [id,a] of anchors)if(!a.node.isConnected){a.actions.dispose();a.group?.dispose();a.editGroup?.dispose();restoreNative(a);anchors.delete(id);}
     for(const node of doc.querySelectorAll('.reading-outline .outline-node[id^="node-r-"]')){
-      if(node.dataset.layoutOnly==='true'||(node.dataset.publicationState==='protected'&&node.dataset.privateLoaded!=='true'))continue;
+      if(node.dataset.localSynced==='true'||node.dataset.layoutOnly==='true'||(node.dataset.publicationState==='protected'&&node.dataset.privateLoaded!=='true'))continue;
       const id=nodeId(node);let a=anchors.get(id);
       if(!a){
         const content=node.querySelector(':scope > .node-content');if(!content)continue;
@@ -89,11 +96,14 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     if(restored.has(restoredId)||a.target?.proposalId===proposal.id)return;
     restored.add(restoredId);
     try{
+      const generation=epoch,authentication=session.epoch;
       if(!await flushAll()){restored.delete(restoredId);return;}
       // Reload only this canonical source branch using the shared authenticated session.
       const documentNode=a.node.closest('[data-rem-type="document"],[data-rem-type="dailyDocument"]');
       const privateDocument=documentNode?.dataset.privateLoaded==='true';
       const raw=privateDocument?(await(await session.request('/documents/'+nodeId(documentNode))).json()).html:await(await fetch('/blog/',{cache:'no-store',credentials:'omit'})).text();
+      if(generation!==epoch||authentication!==session.epoch||!a.node.isConnected)return;
+      localUpdates.remove(a.id);
       const parsed=new win.DOMParser().parseFromString(DOMPurify.sanitize(raw,{FORBID_TAGS:['script','iframe','object','embed','form','input']}),'text/html');
       const replacement=parsed.getElementById('node-'+a.id);if(!replacement)throw Error('正式节点尚未出现在当前页面');
       if(privateDocument){
@@ -153,7 +163,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     const result=await api.get('activity');
     const previous=doc.querySelector('[data-collaboration-activity]');const section=doc.createElement('div');section.className='mw-changeslist';section.dataset.collaborationActivity='';section.dataset.collaborationPrivate='';
     const heading=doc.createElement('p');heading.textContent='与你有关的协作记录（私密）';section.append(heading);
-    let lastDate='',list;const labels={edit:'编辑了待采纳内容',comment:'添加了批注',reply:'回复了批注',accepted:'采纳了新增内容'};
+    let lastDate='',list;const labels={edit:'编辑了待采纳内容',comment:'添加了批注',reply:'回复了批注',synced:'已同步到 RemNote，等待发布',accepted:'已发布采纳内容'};
     for(const e of result.items){
       const day=new Date(e.createdAt*1000).toLocaleDateString('zh-CN',{timeZone:'Asia/Shanghai'});
       if(day!==lastDate){const h=doc.createElement('h4');h.textContent=day;section.append(h);list=doc.createElement('ul');list.className='special';section.append(list);lastDate=day;}
