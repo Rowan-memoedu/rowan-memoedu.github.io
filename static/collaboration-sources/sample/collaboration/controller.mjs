@@ -12,7 +12,7 @@ export function attachCollaboration(session,{window:win=window}={}){
   function clear(){
     epoch++;user=null;api=null;clearInterval(timer);timer=null;observer?.disconnect();observer=null;
     bell?.dispose();bell=null;bellHost?.remove();bellHost=null;
-    for(const a of anchors.values()){a.actions?.dispose();a.group?.dispose();a.actionHost?.remove();a.groupHost?.remove();}
+    for(const a of anchors.values()){a.actions?.dispose();a.group?.dispose();a.editGroup?.dispose();a.actionHost?.remove();a.groupHost?.remove();a.editHost?.remove();restoreNative(a);cleanContainer(a);}
     anchors.clear();savers.clear();restored.clear();index={};inbox={items:[],unreadCount:0,version:0,nextOffset:null};
     for(const el of doc.querySelectorAll('[data-collaboration-private]'))el.remove();
   }
@@ -31,12 +31,12 @@ export function attachCollaboration(session,{window:win=window}={}){
       try{const next=await api.get('inbox?offset='+inbox.nextOffset);const unique=new Map([...inbox.items,...next.items].map(n=>[n.id,n]));inbox={...next,items:[...unique.values()]};renderBell();}catch(e){noticeError=e.message;renderBell();}
     }});
   }
-  function actionProps(a){return {api,anchorId:a.id,entry:index[a.id],data:a.data,onAdd:()=>add(a),onOpen:()=>load(a),refresh:()=>load(a,true),openKey:a.openKey,highlight:a.target?.sourceId};}
+  function actionProps(a){return {api,anchorId:a.id,entry:index[a.id],data:a.data,onAdd:()=>add(a),onEdit:()=>add(a,'edit'),onOpen:()=>load(a),refresh:()=>load(a,true),openKey:a.openKey,highlight:a.target?.sourceId};}
   function groupProps(a){return {api,anchorId:a.id,data:a.data,refresh:()=>load(a,true),onAccepted:proposal=>restore(a,proposal),registerSave,notificationTarget:a.target};}
   function render(a){
     if(!a.node.isConnected)return;
     a.actions.update(actionProps(a));
-    if(a.data?.proposals.length){
+    if(a.data?.proposals.some(p=>p.kind!=='edit')){
       if(!a.group){
         let container=a.node.querySelector(':scope > .document-body')??a.node.querySelector(':scope > ul');
         if(!container){container=doc.createElement('ul');container.dataset.collaborationContainer='';a.node.append(container);}
@@ -44,21 +44,33 @@ export function attachCollaboration(session,{window:win=window}={}){
         container.prepend(host);a.groupHost=host;a.group=UI.mount(host,UI.ProposalGroup,groupProps(a));
         win.dispatchEvent(new win.CustomEvent('personal-outline-changed'));
       }else a.group.update(groupProps(a));
-    }
+    }else if(a.group){a.group.dispose();a.groupHost.remove();a.group=null;a.groupHost=null;cleanContainer(a);}
+    if(a.data?.proposals.some(p=>p.kind==='edit')){
+      if(!a.editGroup){
+        const content=a.node.querySelector(':scope > .node-content');
+        a.node.dataset.collaborationEditing='true';
+        a.native=[content,a.node.querySelector(':scope > .outline-controls')].filter(Boolean).map(el=>({el,hidden:el.hidden}));
+        a.native.forEach(({el})=>{el.hidden=true;});
+        const host=doc.createElement('div');host.className='collaboration-ui collaboration-edit-host';host.dataset.collaborationPrivate='';
+        content.before(host);a.editHost=host;a.editGroup=UI.mount(host,UI.ProposalGroup,{...groupProps(a),edit:true});
+      }else a.editGroup.update({...groupProps(a),edit:true});
+    }else if(a.editGroup){a.editGroup.dispose();a.editHost.remove();a.editGroup=null;a.editHost=null;restoreNative(a);}
   }
+  function restoreNative(a){a.native?.forEach(({el,hidden})=>{el.hidden=hidden;});a.native=null;delete a.node.dataset.collaborationEditing;}
+  function cleanContainer(a){const container=a.node.querySelector(':scope > [data-collaboration-container]');if(container&&!container.children.length){container.remove();win.dispatchEvent(new win.CustomEvent('personal-outline-changed'));}}
   async function load(a,refresh=false){
     if(a.loading){await a.loading;return a.data;}
     a.loading=(async()=>{a.data=await api.get('anchors/'+a.id);render(a);})();
     try{await a.loading;if(refresh)void poll();return a.data;}finally{a.loading=null;}
   }
-  async function add(a){
-    await api.post('proposals',{requestId:crypto.randomUUID(),anchorId:a.id});await load(a,true);
+  async function add(a,mode='add'){
+    await api.post('proposals',{requestId:crypto.randomUUID(),anchorId:a.id,...(mode==='edit'?{mode}:{})});await load(a,true);
     // Wait for React to commit before moving focus to the empty new child.
-    for(let i=0;i<20;i++){const fields=a.groupHost?.querySelectorAll('[contenteditable=true]');if(fields?.length){fields[fields.length-1].focus();break;}await delay(40);}
+    for(let i=0;i<20;i++){const fields=(mode==='edit'?a.editHost:a.groupHost)?.querySelectorAll('[contenteditable=true]');if(fields?.length){fields[fields.length-1].focus();break;}await delay(40);}
   }
   function scan(){
     if(!api||!UI)return;
-    for(const [id,a] of anchors)if(!a.node.isConnected){a.actions.dispose();a.group?.dispose();anchors.delete(id);}
+    for(const [id,a] of anchors)if(!a.node.isConnected){a.actions.dispose();a.group?.dispose();a.editGroup?.dispose();restoreNative(a);anchors.delete(id);}
     for(const node of doc.querySelectorAll('.reading-outline .outline-node[id^="node-r-"]')){
       if(node.dataset.layoutOnly==='true'||(node.dataset.publicationState==='protected'&&node.dataset.privateLoaded!=='true'))continue;
       const id=nodeId(node);let a=anchors.get(id);
@@ -72,10 +84,11 @@ export function attachCollaboration(session,{window:win=window}={}){
     }
   }
   async function restore(a,proposal){
-    if(restored.has(proposal.id)||a.target?.proposalId===proposal.id)return;
-    restored.add(proposal.id);
+    const restoredId=proposal.operation?.id??proposal.id;
+    if(restored.has(restoredId)||a.target?.proposalId===proposal.id)return;
+    restored.add(restoredId);
     try{
-      if(!await flushAll()){restored.delete(proposal.id);return;}
+      if(!await flushAll()){restored.delete(restoredId);return;}
       // Reload only this canonical source branch; tokens remain in memory.
       const documentNode=a.node.closest('[data-rem-type="document"],[data-rem-type="dailyDocument"]');
       const privateDocument=documentNode?.dataset.privateLoaded==='true';
@@ -91,7 +104,7 @@ export function attachCollaboration(session,{window:win=window}={}){
         if(documentNode===a.node){replacement.dataset.privateLoaded='true';replacement.dataset.publicationState='protected';}
       }
       a.node.replaceWith(doc.importNode(replacement,true));win.dispatchEvent(new win.CustomEvent('personal-outline-changed'));scan();
-    }catch(e){restored.delete(proposal.id);noticeError=e.message;renderBell();}
+    }catch(e){restored.delete(restoredId);noticeError=e.message;renderBell();}
   }
   async function poll(){
     if(!api||refreshing)return;refreshing=true;const generation=epoch;
@@ -125,7 +138,7 @@ export function attachCollaboration(session,{window:win=window}={}){
     render(a);
     const wanted=notice.sourceId.startsWith('node:')?notice.sourceId.split(':').at(-1):null;
     for(let attempt=0;attempt<40;attempt++){
-      const element=wanted?[...doc.querySelectorAll('[data-contribution-node]')].find(el=>el.dataset.contributionNode===wanted):doc.getElementById('collab-'+notice.sourceId);
+      const element=notice.targetNodeId?doc.getElementById('node-'+notice.targetNodeId):wanted?[...doc.querySelectorAll('[data-contribution-node]')].find(el=>el.dataset.contributionNode===wanted):doc.getElementById('collab-'+notice.sourceId);
       if(element&&visible(element)){
         element.scrollIntoView({block:'center'});element.setAttribute('tabindex','-1');element.focus({preventScroll:true});element.dataset.highlight='true';
         await api.post('inbox/read',{notificationId:notice.id});void poll();return;

@@ -2,7 +2,7 @@
  * No mock discussion store or browser persistence. See upstream manifests. */
 import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {MessageSquareTextIcon,PlusIcon,ArrowUpIcon,BellIcon,CheckIcon,SquareIcon} from 'lucide-react';
+import {MessageSquareTextIcon,PlusIcon,PencilIcon,ArrowUpIcon,BellIcon,CheckIcon,XIcon} from 'lucide-react';
 import {Button} from '../upstream/collaboration/plate/components/ui/button';
 import {Avatar,AvatarFallback} from '../upstream/collaboration/plate/components/ui/avatar';
 import {Popover,PopoverContent,PopoverTrigger} from './popover';
@@ -12,7 +12,7 @@ const date=value=>new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',mont
 const blank=[{text:''}];
 const statusText={saved:'已保存',unsaved:'未保存',saving:'正在保存…',error:'保存失败，可重试',conflict:'另一方已修改，请对照两个版本后继续'};
 
-function Composer({api,anchorId,thread,proposalId,proposalNodeId,replyTo,onSent}:any){
+function Composer({api,anchorId,thread,proposalId,proposalNodeId,replyTo,onSent,onCancel}:any){
   const [runs,setRuns]=useState(blank),[users,setUsers]=useState([]),[busy,setBusy]=useState(false),[error,setError]=useState(''),[key,setKey]=useState(0);
   const pending=useRef<any>(null);
   useEffect(()=>{let alive=true;api.users({anchorId,threadId:thread?.id,proposalId}).then((x:any)=>{if(alive)setUsers(x.users);}).catch((e:any)=>{if(alive)setError(e.message);});return()=>{alive=false;};},[thread?.id,proposalId,anchorId]);
@@ -26,43 +26,45 @@ function Composer({api,anchorId,thread,proposalId,proposalNodeId,replyTo,onSent}
       pending.current=null;setRuns(blank);setKey(x=>x+1);await onSent();
     }catch(e:any){setError(e.message);}finally{setBusy(false);}
   }
-  return <div className="flex w-full"><div className="mt-2 mr-1 shrink-0"><Avatar className="size-5"><AvatarFallback>{api.user.name[0]}</AvatarFallback></Avatar></div>
-    <div className="relative flex grow gap-2"><div className="w-full"><RichEditor key={key} initial={blank} users={users} onChange={setRuns} readOnly={busy} label={thread?'回复编辑器':'批注编辑器'} placeholder={thread?'回复，使用 @ 提及对方…':'添加批注，只有你与站长可见…'}/>
-      <Button variant="ghost" size="icon-xs" aria-label="发送批注或回复" disabled={busy||!textOf(runs).trim()} onClick={()=>void submit()}><ArrowUpIcon className="size-4"/></Button>
-      {error&&<p role="status" className="text-sm text-destructive">{error}</p>}</div></div></div>;
+  return <div className="collaboration-composer"><Avatar className="size-6"><AvatarFallback>{api.user.name[0]}</AvatarFallback></Avatar>
+    <div className="collaboration-composer-field"><RichEditor key={key} initial={blank} users={users} onChange={setRuns} readOnly={busy} onSubmit={()=>{if(!busy&&textOf(runs).trim())void submit();}} label={thread?'回复编辑器':'批注编辑器'} placeholder={thread?'回复，@ 提及对方…':'写下批注，@ 提及对方…'}/>
+      <div className="collaboration-composer-footer"><span>Ctrl + Enter 发送</span>{onCancel&&<button type="button" onClick={onCancel}>取消</button>}<Button variant="ghost" size="icon-xs" aria-label="发送批注或回复" disabled={busy||!textOf(runs).trim()} onClick={()=>void submit()}><ArrowUpIcon className="size-4"/></Button></div>
+      {error&&<p role="status" className="collaboration-error">{error}</p>}</div></div>;
 }
-function Message({message,thread,onReply,highlight}:any){
+function Message({message,thread,onReply,highlight,children,composer}:any){
   const replied=thread.messages.find((m:any)=>m.id===message.replyTo);
-  return <div id={'collab-'+message.id} tabIndex={-1} data-message-id={message.id} data-highlight={highlight===message.id}>
-    <div className="relative flex items-center"><Avatar className="size-5"><AvatarFallback>{message.authorName[0]}</AvatarFallback></Avatar>
-      <h4 className="mx-2 font-semibold text-sm leading-none">{message.authorName}</h4><div className="text-muted-foreground/80 text-xs leading-none"><time>{date(message.createdAt)}</time></div></div>
-    {replied&&<div className="relative mt-1 flex pl-[32px] text-sm text-subtle-foreground"><div className="my-px w-0.5 shrink-0 bg-highlight"/><div className="ml-2">回复 {replied.authorName}：{textOf(replied.content).slice(0,90)}</div></div>}
-    <div className="relative my-1 pl-[26px]"><RichEditor initial={message.content} readOnly label="批注内容"/><Button variant="ghost" size="xs" onClick={()=>onReply(message.id)}>回复</Button></div>
-  </div>;
+  return <article id={'collab-'+message.id} tabIndex={-1} className="collaboration-message" data-message-id={message.id} data-highlight={highlight===message.id}>
+    <header><Avatar className="size-6"><AvatarFallback>{message.authorName[0]}</AvatarFallback></Avatar><strong>{message.authorName}</strong><time>{date(message.createdAt)}</time></header>
+    {replied&&<div className="collaboration-reply-reference">回复 {replied.authorName}</div>}
+    <div className="collaboration-message-body"><RichEditor initial={message.content} readOnly label="批注内容"/></div>
+    <button className="collaboration-reply-button" type="button" onClick={()=>onReply(message.id)}>回复</button>{composer}{children}
+  </article>;
 }
-export function DiscussionPanel({api,anchorId,data,proposalId,proposalNodeId,refresh,highlight}:any){
+export function DiscussionPanel({api,anchorId,data,proposalId,proposalNodeId,refresh,highlight,onClose}:any){
   const threads=data.threads.filter((t:any)=>proposalId?t.proposalId===proposalId&&t.proposalNodeId===proposalNodeId:!t.proposalId||!data.proposals.some((p:any)=>p.id===t.proposalId&&p.status!=='accepted'));
-  const [reply,setReply]=useState<any>({}),[activeThread,setActiveThread]=useState<string|undefined>();
+  const [reply,setReply]=useState<string|null>(null);
   useEffect(()=>{if(!highlight)return;const el=document.getElementById('collab-'+highlight);el?.scrollIntoView({block:'center'});el?.focus({preventScroll:true});},[highlight,data]);
-  return <div className="max-h-[65vh] overflow-y-auto" aria-label="节点批注"><p className="p-4 text-xs text-muted-foreground">每条讨论仅参与者本人和站长可见。</p>
-    {threads.map((thread:any,index:number)=><React.Fragment key={thread.id}><div className="p-4" data-thread-id={thread.id}>
-      {thread.messages.map((message:any)=><Message key={message.id} thread={thread} message={message} highlight={highlight} onReply={(id:string)=>{setReply({...reply,[thread.id]:id});setActiveThread(thread.id);}}/>)}
-      {activeThread===thread.id&&<Composer key={thread.id} api={api} anchorId={anchorId} thread={thread} replyTo={reply[thread.id]} onSent={refresh}/>}
-      {activeThread!==thread.id&&<Button variant="ghost" size="sm" onClick={()=>setActiveThread(thread.id)}>回复这条讨论</Button>}
-    </div>{index<threads.length-1&&<div className="h-px w-full bg-muted"/>}</React.Fragment>)}
-    <div className="p-4"><Composer api={api} anchorId={anchorId} proposalId={proposalId} proposalNodeId={proposalNodeId} onSent={refresh}/></div>
-  </div>;
+  function branch(thread:any,parent:string|null=null,depth=0):any{
+    return thread.messages.filter((m:any)=>m.replyTo===parent||(!parent&&!thread.messages.some((x:any)=>x.id===m.replyTo))).map((message:any)=><Message key={message.id} thread={thread} message={message} highlight={highlight} onReply={setReply} composer={reply===message.id?<Composer api={api} anchorId={anchorId} thread={thread} replyTo={message.id} onCancel={()=>setReply(null)} onSent={async()=>{await refresh();setReply(null);}}/>:null}>
+      {thread.messages.some((m:any)=>m.replyTo===message.id)&&<div className={'collaboration-replies '+(depth>=2?'collaboration-replies-flat':'')}>{branch(thread,message.id,depth+1)}</div>}
+    </Message>);
+  }
+  return <section className="collaboration-discussion" aria-label="节点批注"><header className="collaboration-discussion-header"><div><strong>批注</strong><p>仅作者与站长可见</p></div>{onClose&&<button className="collaboration-action" type="button" aria-label="关闭批注" onClick={onClose}><XIcon/></button>}</header>
+    <div className="collaboration-discussion-list">{!threads.length&&<p className="collaboration-empty">暂无批注</p>}{threads.map((thread:any)=><section className="collaboration-thread" key={thread.id} data-thread-id={thread.id}>{branch(thread)}</section>)}</div>
+    <div className="collaboration-new-comment"><Composer api={api} anchorId={anchorId} proposalId={proposalId} proposalNodeId={proposalNodeId} onSent={refresh}/></div>
+  </section>;
 }
 
-export function Actions({api,anchorId,entry,onAdd,onOpen,openKey,data,refresh,highlight}:any){
+export function Actions({api,anchorId,entry,onAdd,onEdit,onOpen,openKey,data,refresh,highlight}:any){
   const [open,setOpen]=useState(false),[error,setError]=useState('');
   useEffect(()=>{if(openKey)setOpen(true);},[openKey]);
   return <><Popover open={open} onOpenChange={value=>{setOpen(value);if(value)void onOpen().catch((e:any)=>setError(e.message));}}>
-    <PopoverTrigger asChild><Button variant="ghost" size="icon-xs" className="mt-1 ml-1 h-6 gap-1 text-muted-foreground/80" aria-label={entry?.comments?`查看 ${entry.comments} 条批注`:'添加批注'}><MessageSquareTextIcon className="size-4"/>{entry?.comments>0&&<span className="font-semibold text-xs">{entry.comments}</span>}</Button></PopoverTrigger>
-    <PopoverContent className="w-[380px] max-w-[calc(100vw-24px)] overflow-y-auto p-0" side="bottom" align="end" onOpenAutoFocus={e=>e.preventDefault()}>
-      {error?<p role="status" className="p-4">{error}</p>:data?<DiscussionPanel api={api} anchorId={anchorId} data={data} refresh={refresh} highlight={highlight}/>:<p className="p-4" role="status">正在加载批注…</p>}
+    <PopoverTrigger asChild><button type="button" className={'collaboration-action '+(entry?.comments?'collaboration-comment-existing':'collaboration-transient')} aria-label={entry?.comments?`查看 ${entry.comments} 条批注`:'添加批注'}><MessageSquareTextIcon/>{entry?.comments>0&&<span>{entry.comments}</span>}</button></PopoverTrigger>
+    <PopoverContent className="collaboration-discussion-popover" side="bottom" align="end" onOpenAutoFocus={e=>e.preventDefault()}>
+      {error?<p role="status" className="p-4">{error}</p>:data?<DiscussionPanel api={api} anchorId={anchorId} data={data} refresh={refresh} highlight={highlight} onClose={()=>setOpen(false)}/>:<p className="p-4" role="status">正在加载批注…</p>}
     </PopoverContent></Popover>
-    <Button variant="ghost" size="icon-xs" aria-label="添加子节点" onClick={()=>void onAdd().catch((e:any)=>setError(e.message))}><PlusIcon className="size-4"/></Button>
+    <button type="button" className="collaboration-action collaboration-transient" aria-label="添加子节点" onClick={()=>void onAdd().catch((e:any)=>setError(e.message))}><PlusIcon/></button>
+    <button type="button" className="collaboration-action collaboration-transient" aria-label="修改节点" onClick={()=>void onEdit().catch((e:any)=>setError(e.message))}><PencilIcon/></button>
     {error&&!open&&<span role="status" className="text-xs text-destructive">{error}</span>}</>;
 }
 
@@ -76,36 +78,38 @@ function Proposal({api,proposal,anchorId,data,refresh,onAccepted,registerSave,no
   if(!save.current)startSave(proposal);
   useEffect(()=>{mounted.current=true;const unregister=registerSave(()=>save.current.flush());api.users({anchorId,proposalId:proposal.id}).then((x:any)=>{if(mounted.current)setUsers(x.users);}).catch((e:any)=>{if(mounted.current)setError(e.message);});return()=>{mounted.current=false;save.current.dispose();unregister();};},[]);
   useEffect(()=>{
-    if(proposal.status==='accepted'){void onAccepted(proposal);return;}
+    if(proposal.operation?.status==='accepted'){void onAccepted(proposal);if(proposal.status==='accepted')return;}
     if(proposal.revision<=current.current.revision)return;
     if(state==='saved'){current.current=proposal;initial.current=proposal.nodes;startSave(proposal);setVersion(v=>v+1);}
     else if(!save.current.running){save.current.conflict=true;setState('conflict');setRemote(proposal);}
-  },[proposal.revision,proposal.status]);
-  async function showPreview(){
-    setError('');try{if(!await save.current.flush())return;const result=await api.get('proposals/'+proposal.id+'/preview');setPreview(result);}catch(e:any){setError(e.message);}
+  },[proposal.revision,proposal.status,proposal.operation?.status]);
+  async function showPreview(nodeId:string){
+    setError('');try{if(!await save.current.flush())return;const result=await api.get('proposals/'+proposal.id+'/preview?nodeId='+encodeURIComponent(nodeId));setPreview(result);}catch(e:any){setError(e.message);}
   }
   async function approve(){
-    try{await api.post('approve',{requestId:crypto.randomUUID(),proposalId:proposal.id,revision:preview.revision,projectionHash:preview.projectionHash});setPreview(null);await refresh();}catch(e:any){setError(e.message);}
+    try{await api.post('approve',{requestId:crypto.randomUUID(),proposalId:proposal.id,nodeId:preview.nodeId,revision:preview.revision,projectionHash:preview.projectionHash});setPreview(null);await refresh();}catch(e:any){setError(e.message);}
   }
   async function conflict(){try{const latest=await api.get('anchors/'+anchorId);setRemote(latest.proposals.find((p:any)=>p.id===proposal.id));}catch(e:any){setError(e.message);}}
   function resolveConflict(mine:boolean){
     const local=save.current.current;current.current=remote;initial.current=mine?local:remote.nodes;startSave(remote);setVersion(v=>v+1);setRemote(null);setState('saved');setError('');if(mine)save.current.change(local);
   }
   const adopting=proposal.status!=='draft';
+  const comments=Object.fromEntries(data.threads.filter((t:any)=>t.proposalId===proposal.id).map((t:any)=>[t.proposalNodeId,data.threads.filter((x:any)=>x.proposalId===proposal.id&&x.proposalNodeId===t.proposalNodeId).length]));
+  async function removeEmpty(children:any=[]){save.current.change(children);if(await save.current.flush())await refresh();}
   return <div className="collaboration-contribution" data-proposal-id={proposal.id} data-status={proposal.status}>
-    <div className="flex items-center justify-between gap-2"><span role="status" className="text-xs text-muted-foreground">{adopting?(proposal.status==='accepted'?'已采纳':proposal.operation?.status==='attention'?'同步需要核查，请站长查看本机记录':proposal.operation?.status==='retry'?'发布暂未完成，将继续重试':'正在同步到 RemNote 并发布…'):statusText[state]}</span>
+    <div className={adopting||['error','conflict'].includes(state)?'collaboration-save-state':'collaboration-visually-hidden'}><span role="status">{adopting?(proposal.status==='accepted'?'已采纳':proposal.operation?.status==='attention'?'同步需要核查，请站长查看本机记录':proposal.operation?.status==='retry'?'发布暂未完成，将继续重试':'正在同步到 RemNote 并发布…'):statusText[state]}</span>
     </div>
-    {(proposal.status!=='accepted'||history)&&<>{history&&<p className="text-xs">私密讨论历史（正式正文中的 @ 已移除）</p>}<RichEditor key={version} initial={initial.current} tree users={users} readOnly={adopting||state==='conflict'} editorRef={editor} onChange={(nodes:any)=>save.current.change(nodes)} onComment={setCommentNode} onApprove={api.user.owner&&!adopting?()=>void showPreview():undefined} label={history?'私密讨论历史':'新增子节点编辑器'}/></>}
+    {(proposal.status!=='accepted'||history)&&initial.current.length>0&&<>{history&&<p className="text-xs">私密讨论历史（正式正文中的 @ 已移除）</p>}<RichEditor key={version} initial={initial.current} tree inlineRoot={proposal.kind==='edit'} users={users} readOnly={adopting||state==='conflict'} editorRef={editor} onChange={(nodes:any)=>save.current.change(nodes)} onEmpty={(children:any)=>void removeEmpty(children)} comments={comments} owner={api.user.owner} onComment={setCommentNode} onApprove={showPreview} label={history?'私密讨论历史':proposal.kind==='edit'?'修改节点编辑器':'新增子节点编辑器'}/></>}
     {error&&<p role="status" className="text-sm text-destructive">{error}</p>}
     {state==='error'&&<Button variant="outline" size="sm" onClick={()=>void save.current.flush()}>重试保存</Button>}
     {state==='conflict'&&<div><Button variant="outline" size="sm" onClick={()=>void conflict()}>对照最新版本</Button>{remote&&<><p>对方的最新内容：</p><RichEditor key={'remote-'+remote.revision} initial={remote.nodes} tree readOnly/>
       <Button size="sm" variant="outline" onClick={()=>resolveConflict(false)}>载入对方版本</Button> <Button size="sm" onClick={()=>resolveConflict(true)}>保留我的内容继续编辑</Button></>}</div>}
-    {preview&&<div role="region" aria-label="正式正文预览" className="rounded-md border p-4"><p>采纳以下整棵子树。@ 标记已移除，原讨论只保留在私密历史中。</p><Projection nodes={preview.nodes}/><Button size="sm" onClick={()=>void approve()}>确认采纳</Button> <Button variant="ghost" size="sm" onClick={()=>setPreview(null)}>取消</Button></div>}
-    {commentNode&&<div className="rounded-md border"><div className="flex justify-end"><Button variant="ghost" size="xs" onClick={()=>setCommentNode(null)}>关闭批注</Button></div><DiscussionPanel api={api} anchorId={anchorId} data={data} proposalId={proposal.id} proposalNodeId={commentNode} refresh={refresh} highlight={notificationTarget?.sourceId}/></div>}
+    {preview&&<div role="region" aria-label="正式正文预览" className="collaboration-adoption-preview"><p>{preview.kind==='edit'?'更新原节点文字，保留原 ID 和已有子节点。':'只采纳所选节点及其子树。'}@ 标记不会写入正式正文。</p><Projection nodes={preview.nodes}/><Button size="sm" onClick={()=>void approve()}>确认采纳</Button> <Button variant="ghost" size="sm" onClick={()=>setPreview(null)}>取消</Button></div>}
+    {commentNode&&<div className="collaboration-inline-discussion"><DiscussionPanel api={api} anchorId={anchorId} data={data} proposalId={proposal.id} proposalNodeId={commentNode} refresh={refresh} highlight={notificationTarget?.sourceId} onClose={()=>setCommentNode(null)}/></div>}
   </div>;
 }
-function Projection({nodes}:any){return <RichEditor initial={nodes} tree readOnly label="正式正文预览编辑器"/>;}
-export function ProposalGroup(props:any){return <>{props.data.proposals.map((p:any)=><Proposal key={p.id} {...props} proposal={p}/>)}</>;}
+function Projection({nodes}:any){return <RichEditor initial={nodes} tree preview readOnly label="正式正文预览编辑器"/>;}
+export function ProposalGroup(props:any){return <>{props.data.proposals.filter((p:any)=>p.kind!=='edit'||props.edit).filter((p:any)=>!props.edit||p.kind==='edit').map((p:any)=><Proposal key={p.id} {...props} proposal={p}/>)}</>;}
 
 export function Bell({inbox,onOpen,onJump,onMore,error}:any){
   const [open,setOpen]=useState(false),[jumpError,setJumpError]=useState('');
