@@ -62,7 +62,7 @@ function ContributionLine(props:any){
   return <PlateElement {...props} className="node-content" attributes={{...props.attributes,'data-contribution-node':parent?.id}}>
     {props.children}
     {!preview&&<span contentEditable={false} className="collaboration-row-actions" onMouseDown={e=>e.preventDefault()}>
-      <button type="button" className="collaboration-action collaboration-transient" role="checkbox" aria-checked="false" aria-label="采纳此节点及子树" disabled={!owner||readOnly||!canApprove} title={!owner?'由站长采纳':!canApprove?'父节点尚未采纳，请采纳其父级子树':'采纳此节点及其子树'} onClick={()=>onApprove?.(parent.id)}><SquareIcon/></button>
+      {owner&&<button type="button" className="collaboration-action collaboration-transient" role="checkbox" aria-checked="false" aria-label="采纳此节点及子树" disabled={readOnly||!canApprove} title={!canApprove?'父节点尚未采纳，请采纳其父级子树':'采纳此节点及其子树'} onClick={()=>onApprove?.(parent.id)}><SquareIcon/></button>}
       <button type="button" className={'collaboration-action '+(count?'collaboration-comment-existing':'collaboration-transient')} aria-label={count?`查看 ${count} 条子节点批注`:'批注此子节点'} onClick={()=>onComment?.(parent.id)}><MessageSquareTextIcon/>{count>0&&<span>{count}</span>}</button>
       <button type="button" className="collaboration-action collaboration-transient" aria-label="添加嵌套子节点" disabled={readOnly} onClick={child}><PlusIcon/></button>
       <button type="button" className="collaboration-action collaboration-transient" aria-label="编辑此讨论节点" disabled={readOnly} onClick={()=>{props.editor.tf.select(props.editor.api.start(path));props.editor.tf.focus();}}><PencilIcon/></button>
