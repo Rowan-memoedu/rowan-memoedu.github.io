@@ -1,5 +1,9 @@
 import DOMPurify from 'dompurify';
 import {createInvitationSession} from './invitation-session.mjs';
+import {parseProtectedDocument} from './protected-document.mjs';
+import {attachSearchPreview} from './search-preview.mjs';
+import {readerDocumentChanged} from './reader-document.mjs';
+import {renderDocumentAttachments,mountDocumentAttachmentSidebar} from './document-attachments.mjs';
 
 /** Remember only the revocable session. Invitations and private bodies are never stored. */
 export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}={}){
@@ -19,18 +23,21 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
   readError.querySelector('[data-close]').onclick=closeError;
   const sessionButton=doc.createElement('button');sessionButton.type='button';sessionButton.textContent='邀请码登录';
   const mountSession=()=>{(doc.querySelector('.site-header-inner')??root.querySelector('.outline-toolbar-tools')??root).append(sessionButton);};mountSession();
-  const refresh=()=>{if(outline)win.dispatchEvent(new win.CustomEvent('personal-outline-changed'));mountSession();};
+  const refresh=(nodes=[])=>{if(outline)readerDocumentChanged(win,nodes);mountSession();};
   const clearContent=()=>{
+    const changed=[...loaded];
     for(const id of loaded){const node=doc.getElementById(id);if(node&&original.has(id))node.replaceWith(original.get(id).cloneNode(true));}
     loaded.clear();for(const blob of blobs)win.URL.revokeObjectURL(blob);blobs.clear();
     for(const section of privateSections)section.remove();privateSections.clear();
-    refresh();
+    win.dispatchEvent(new win.CustomEvent('personal-reader-backlinks',{detail:{clear:true}}));
+    refresh(changed.map(id=>doc.getElementById(id)??id));
   };
   const wipe=session.clear,request=session.request;let sessionStatus=session.status;
   session.subscribe(()=>{
     const restoredSession=sessionStatus==='checking'&&session.authenticated;sessionStatus=session.status;
     epoch++;for(const controller of controllers.values())controller.abort();controllers.clear();opening.clear();
     if(session.authenticated&&session.user?.role!=='reader')root.dataset.privateSession='active';else{delete root.dataset.privateSession;clearContent();closeError();}
+    if(session.authenticated&&session.user?.role!=='reader'&&session.readerGraph)win.dispatchEvent(new win.CustomEvent('personal-reader-backlinks',{detail:{data:session.readerGraph}}));
     sessionButton.textContent=session.authenticated?'退出登录':session.status==='unavailable'?'重试登录验证':'邀请码登录';refresh();
     win.dispatchEvent(new win.CustomEvent('personal-session-changed'));
     if(restoredSession)void session.ready.then(()=>{lastRequested=null;focused();});
@@ -51,14 +58,7 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
     try{
       const payload=await(await request('/documents/'+encodeURIComponent(id),{signal})).json();
       if(generation!==epoch||signal.aborted)return;
-      if(payload.id!==id||typeof payload.html!=='string'||!Array.isArray(payload.files))throw Error('页面响应无效');
-      const template=doc.createElement('template');
-      template.innerHTML=purifier.sanitize(payload.html,{FORBID_TAGS:['script','iframe','object','embed','form','input'],FORBID_ATTR:['style']});
-      const replacement=template.content.firstElementChild;
-      if(template.content.children.length!==1||replacement?.id!=='node-'+id||!replacement.matches('li.outline-node'))throw Error('页面响应无效');
-      for(const element of replacement.querySelectorAll('[src],[srcset]')){
-        if(!element.hasAttribute('data-private-asset'))throw Error('私密页面包含未授权的远程资源');
-      }
+      const replacement=parseProtectedDocument({document:doc,purifier,payload,id});
       const assetIds=new Set([...replacement.querySelectorAll('[data-private-asset]')].map(element=>element.dataset.privateAsset));
       payload.files.forEach(file=>assetIds.add(file.id));const urls=new Map();
       for(const asset of assetIds){
@@ -68,27 +68,15 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
         const url=win.URL.createObjectURL(blob);blobs.add(url);urls.set(asset,url);
       }
       for(const element of replacement.querySelectorAll('[data-private-asset]'))element.setAttribute(element.tagName==='IMG'?'src':'href',urls.get(element.dataset.privateAsset));
-      if(payload.files.length){
-        const right=doc.querySelector('.sidebar.right');if(!right)throw Error('页面附件栏不可用');
-        let sidebar=right.querySelector('[data-document-attachment-sidebar]');
-        if(!sidebar){sidebar=doc.createElement('div');sidebar.className='backlinks document-attachment-sidebar';sidebar.dataset.documentAttachmentSidebar='';sidebar.setAttribute('role','complementary');sidebar.setAttribute('aria-label','附件');const heading=doc.createElement('h3');heading.textContent='附件';sidebar.append(heading);const backlinks=right.querySelector(':scope > .backlinks');backlinks?backlinks.after(sidebar):right.append(sidebar);}
-        const section=doc.createElement('section');section.className='document-attachments';section.dataset.documentAttachmentsFor=id;section.setAttribute('aria-label','附件');
-        const list=doc.createElement('ol');list.className='document-attachment-list';section.append(list);
-        for(const [index,file] of payload.files.entries()){
-          const format=file.id.split('.')[1],li=doc.createElement('li');li.dataset.documentAttachmentIndex=String(index+1);
-          const icon=doc.createElement('span');icon.className='document-attachment-icon';icon.setAttribute('aria-hidden','true');icon.textContent='📎';li.append(icon);
-          const name=doc.createElement('span');name.dataset.documentAttachmentName='';name.textContent=file.fileName;
-          if(['pdf','png','jpg','jpeg','gif','webp','svg','txt','json','wav','mp3','mp4','webm'].includes(format)){
-            const preview=doc.createElement('a');preview.href=urls.get(file.id);preview.target='_blank';preview.rel='noopener noreferrer';preview.setAttribute('aria-label','预览 '+format.toUpperCase()+'：'+file.fileName);preview.append(name);li.append(preview);
-          }else li.append(name);
-          const type=doc.createElement('span');type.className='periodical document-attachment-type';type.textContent=format.toUpperCase();li.append(type);
-          const download=doc.createElement('a');download.className='document-attachment-download';download.href=urls.get(file.id);download.download=file.fileName;download.setAttribute('aria-label','下载 '+file.fileName);download.textContent='下载';li.append(download);list.append(li);
-        }
-        sidebar.append(section);sidebar.hidden=false;privateSections.add(section);
-      }
+      if(payload.files.length)replacement.insertAdjacentHTML('beforeend',renderDocumentAttachments({id,remType:'document'},payload.files.map(file=>({...file,format:file.id.split('.')[1]})),file=>urls.get(file.id)));
       if(generation!==epoch||signal.aborted)return;
       replacement.dataset.publicationState='protected';replacement.dataset.privateLoaded='true';
-      doc.getElementById('node-'+id)?.replaceWith(replacement);loaded.add(replacement.id);refresh();close();closeError();return true;
+      // A fragment changes availability, never the engine or unrelated nodes.
+      doc.getElementById('node-'+id)?.replaceWith(replacement);loaded.add(replacement.id);
+      const sections=[...replacement.querySelectorAll('.document-attachments')];
+      if(sections.length){mountDocumentAttachmentSidebar(doc,{append:true});sections.forEach(section=>privateSections.add(section));}
+      if(payload.backlinks)win.dispatchEvent(new win.CustomEvent('personal-reader-backlinks',{detail:{data:payload.backlinks}}));
+      refresh([replacement]);close();closeError();return true;
     }catch(error){
       if(error.status===401&&!session.authenticated&&pending===id){show();status.textContent=error.message;return;}
       if(signal.aborted||generation!==epoch)return;
@@ -145,13 +133,13 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
     for(const id of loaded){const node=doc.getElementById(id);if(node?.dataset.privateLoaded!=='true'&&node&&!node.classList.contains('is-folded'))void open(id.replace(/^node-/u,''));}
   });
   void session.ready.then(()=>{if(win.location.hash||root.dataset.documentTitleSource)focused();});
-  return {wipe,open,dialog,request,showLogin:show,get ready(){return session.ready;},get user(){return session.user;},get epoch(){return session.epoch;},get authenticated(){return session.authenticated;}};
+  return {wipe,open,dialog,request,showLogin:show,get ready(){return session.ready;},get status(){return session.status;},get user(){return session.user;},get epoch(){return session.epoch;},get authenticated(){return session.authenticated;}};
 }
 
 if(typeof window!=='undefined'){
   const start=async()=>{
     const response=await fetch('/static/private-backend.json',{credentials:'omit',cache:'no-store'});
-    if(!response.ok)return;const config=await response.json();const session=attachProtectedReader({apiBase:config.apiBase});
+    if(!response.ok)return;const config=await response.json();const session=attachProtectedReader({apiBase:config.apiBase});attachSearchPreview(session);
     const {attachCollaboration}=await import('./collaboration/controller.mjs');attachCollaboration(session);
   };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>void start());else void start();

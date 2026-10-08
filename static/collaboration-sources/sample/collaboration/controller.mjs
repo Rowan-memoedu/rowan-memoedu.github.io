@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify';
 import {createLocalUpdates} from './local-updates.mjs';
+import {readerDocumentChanged,finalizeReaderDocument} from '../reader-document.mjs';
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const visible=element=>element.isConnected&&!element.closest('[hidden],[inert]')&&element.getClientRects().length>0;
 const nodeId=element=>element.id.replace(/^node-/u,'');
@@ -69,7 +70,9 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     if(a.loading){await a.loading;return a.data;}
     const generation=epoch;
     a.loading=(async()=>{
-      try{const data=await api.get('anchors/'+a.id);if(generation!==epoch||!a.node.isConnected)return; a.data=data;render(a);localUpdates.apply(a.id,data.localUpdates??[]);}
+      try{const data=await api.get('anchors/'+a.id);if(generation!==epoch||!a.node.isConnected)return;
+        const revision=JSON.stringify(data);if(a.dataRevision===revision)return;
+        a.dataRevision=revision;a.data=data;render(a);localUpdates.apply(a.id,data.localUpdates??[]);}
       catch(error){if(generation===epoch&&[401,403,404].includes(error.status)){localUpdates.remove(a.id);a.data=null;render(a);}throw error;}
     })();
     try{await a.loading;if(refresh)void poll();return a.data;}finally{a.loading=null;}
@@ -101,6 +104,9 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
       if(node.dataset.localSynced==='true'||node.dataset.layoutOnly==='true'||(node.dataset.publicationState==='protected'&&node.dataset.privateLoaded!=='true'))continue;
       const id=nodeId(node);let a=anchors.get(id);
       if(!a){
+        // Folded source branches are ordinary dormant content, not hundreds of
+        // mounted React editors. The same focus/expand event activates them.
+        if(node.closest('[hidden],[inert]'))continue;
         const content=node.querySelector(':scope > .node-content');if(!content)continue;
         const host=doc.createElement('span');host.className='collaboration-ui collaboration-actions';host.dataset.collaborationPrivate='';content.append(host);
         const document=node.closest('[data-rem-type="document"],[data-rem-type="dailyDocument"]');
@@ -134,7 +140,8 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
         }
         if(documentNode===a.node){replacement.dataset.privateLoaded='true';replacement.dataset.publicationState='protected';}
       }
-      a.node.replaceWith(doc.importNode(replacement,true));win.dispatchEvent(new win.CustomEvent('personal-outline-changed'));scan();
+      const incoming=doc.importNode(replacement,true);finalizeReaderDocument(incoming);
+      a.node.replaceWith(incoming);readerDocumentChanged(win,[incoming]);scan();
     }catch(e){restored.delete(restoredId);noticeError=e.message;renderBell();}
   }
   async function poll(){

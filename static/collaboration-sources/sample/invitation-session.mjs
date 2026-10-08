@@ -3,7 +3,7 @@ export function createInvitationSession({window:win=window,apiBase,fetcher=fetch
   const base=new URL(apiBase,win.location.href);
   if(base.protocol!=='https:'&&!(base.protocol==='http:'&&['127.0.0.1','localhost'].includes(base.hostname)))throw Error('Private API requires HTTPS');
   const api=base.href.replace(/\/$/u,''),storageKey='personalwebsite-session-v1:'+api;
-  let token='',user=null,expiresAt=0,epoch=0,timer=null,restoring=null,status='anonymous';
+  let token='',user=null,readerGraph=null,expiresAt=0,epoch=0,timer=null,restoring=null,status='anonymous';
   const listeners=new Set(),controllers=new Set();
   const cancelled=()=>Object.assign(Error('登录状态已改变'),{name:'AbortError'});
   const read=()=>{try{return win.localStorage.getItem(storageKey);}catch{return null;}};
@@ -12,12 +12,12 @@ export function createInvitationSession({window:win=window,apiBase,fetcher=fetch
   const emit=()=>{for(const listener of listeners)listener();};
   function clear({forgetSession=true}={}){
     epoch++;for(const controller of controllers)controller.abort();controllers.clear();
-    token='';user=null;expiresAt=0;status='anonymous';restoring=null;win.clearTimeout(timer);timer=null;
+    token='';user=null;readerGraph=null;expiresAt=0;status='anonymous';restoring=null;win.clearTimeout(timer);timer=null;
     if(forgetSession)forget();emit();
   }
   function activate(value){
     if(typeof value.token!=='string'||!/^[A-Za-z0-9_-]{40,100}$/u.test(value.token)||!Number.isFinite(value.expiresAt)||value.expiresAt<=Date.now()/1000)throw Error('登录响应无效');
-    token=value.token;user=value.user;expiresAt=value.expiresAt;status='authenticated';epoch++;
+    token=value.token;user=value.user;readerGraph=value.readerGraph??null;expiresAt=value.expiresAt;status='authenticated';epoch++;
     const expire=()=>{const remaining=expiresAt*1000-Date.now();if(remaining<=0)clear();else timer=win.setTimeout(expire,Math.min(2147483647,remaining));};expire();
     persist();emit();
   }
@@ -70,5 +70,5 @@ export function createInvitationSession({window:win=window,apiBase,fetcher=fetch
   const pageshow=event=>{if(event.persisted)void restore();};
   win.addEventListener('storage',storage);win.addEventListener('pagehide',pagehide);win.addEventListener('pageshow',pageshow);
   if(read())void restore();
-  return {request,login,logout,clear,restore,subscribe(listener){listeners.add(listener);return()=>listeners.delete(listener);},get status(){return status;},get ready(){return restoring??Promise.resolve();},get user(){return user;},get epoch(){return epoch;},get authenticated(){return !!token&&Date.now()/1000<expiresAt;}};
+  return {request,login,logout,clear,restore,subscribe(listener){listeners.add(listener);return()=>listeners.delete(listener);},get status(){return status;},get ready(){return restoring??Promise.resolve();},get user(){return user;},get readerGraph(){return readerGraph;},get epoch(){return epoch;},get authenticated(){return !!token&&Date.now()/1000<expiresAt;}};
 }
