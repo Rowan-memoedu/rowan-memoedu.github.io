@@ -10,6 +10,10 @@ export function parseProtectedDocument({document:doc,purifier,payload,id}){
   for(const element of replacement.querySelectorAll('[src],[srcset]')){
     if(!element.hasAttribute('data-private-asset'))throw Error('私密页面包含未授权的远程资源');
   }
+  for(const element of replacement.querySelectorAll('svg image,svg use,svg feImage')){
+    const href=element.getAttribute('href')??element.getAttributeNS('http://www.w3.org/1999/xlink','href');
+    if(href&&!href.startsWith('#')&&!element.hasAttribute('data-private-asset'))throw Error('私密页面包含未授权的远程资源');
+  }
   // KaTeX's generated dimensions are part of ordinary rendering. Keep only
   // inert numeric layout declarations; arbitrary CSS and resource URLs fail closed.
   for(const element of replacement.querySelectorAll('[style]')){
