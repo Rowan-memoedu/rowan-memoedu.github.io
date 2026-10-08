@@ -30,7 +30,7 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
   session.subscribe(()=>{
     const restoredSession=sessionStatus==='checking'&&session.authenticated;sessionStatus=session.status;
     epoch++;for(const controller of controllers.values())controller.abort();controllers.clear();opening.clear();
-    if(session.authenticated)root.dataset.privateSession='active';else{delete root.dataset.privateSession;clearContent();closeError();}
+    if(session.authenticated&&session.user?.role!=='reader')root.dataset.privateSession='active';else{delete root.dataset.privateSession;clearContent();closeError();}
     sessionButton.textContent=session.authenticated?'退出登录':session.status==='unavailable'?'重试登录验证':'邀请码登录';refresh();
     win.dispatchEvent(new win.CustomEvent('personal-session-changed'));
     if(restoredSession)void session.ready.then(()=>{lastRequested=null;focused();});
