@@ -54,7 +54,7 @@ export function DiscussionPanel({api,anchorId,data,proposalId,proposalNodeId,inc
       {thread.messages.some((m:any)=>m.replyTo===message.id)&&<div className={'collaboration-replies '+(depth>=2?'collaboration-replies-flat':'')}>{branch(thread,message.id,depth+1)}</div>}
     </Message>);
   }
-  return <section className="collaboration-discussion" aria-label="节点批注"><header className="collaboration-discussion-header"><div><strong>批注</strong><p>仅作者与站长可见</p></div>{onClose&&<button className="collaboration-action" type="button" aria-label="关闭批注" onClick={onClose}><XIcon/></button>}</header>
+  return <section className="collaboration-discussion" aria-label="节点批注"><header className="collaboration-discussion-header"><div><strong>批注</strong><p>作者、站长与团队成员可见</p></div>{onClose&&<button className="collaboration-action" type="button" aria-label="关闭批注" onClick={onClose}><XIcon/></button>}</header>
     <div className="collaboration-discussion-list">{!threads.length&&<p className="collaboration-empty">暂无批注</p>}{threads.map((thread:any)=><section className="collaboration-thread" key={thread.id} data-thread-id={thread.id}>{branch(thread)}</section>)}</div>
     <div className="collaboration-new-comment"><Composer api={api} anchorId={anchorId} proposalId={proposalId} proposalNodeId={proposalNodeId} onSent={refresh}/></div>
   </section>;
