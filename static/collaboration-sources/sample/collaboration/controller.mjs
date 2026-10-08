@@ -35,7 +35,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
       try{const next=await api.get('inbox?offset='+inbox.nextOffset);const unique=new Map([...inbox.items,...next.items].map(n=>[n.id,n]));inbox={...next,items:[...unique.values()]};renderBell();}catch(e){noticeError=e.message;renderBell();}
     }});
   }
-  function actionProps(a){return {api,anchorId:a.id,entry:index[a.id],data:a.data,onAdd:()=>add(a),onEdit:()=>add(a,'edit'),onOpen:()=>load(a),refresh:()=>load(a,true),openKey:a.openKey,highlight:a.target?.sourceId};}
+  function actionProps(a){return {api,anchorId:a.id,entry:index[a.id],data:a.data,canEdit:a.data?.canEdit??a.canEdit,onAdd:()=>add(a),onEdit:()=>add(a,'edit'),onOpen:()=>load(a),refresh:()=>load(a,true),openKey:a.openKey,highlight:a.target?.sourceId};}
   function groupProps(a){return {api,anchorId:a.id,data:a.data,refresh:()=>load(a,true),onAccepted:proposal=>restore(a,proposal),registerSave,notificationTarget:a.target};}
   function render(a){
     if(!a.node.isConnected)return;
@@ -96,15 +96,15 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     for(const [id,a] of anchors)if(!a.node.isConnected){win.clearTimeout(a.syncTimer);a.actions.dispose();a.group?.dispose();a.editGroup?.dispose();restoreNative(a);anchors.delete(id);}
     for(const node of doc.querySelectorAll('.reading-outline .outline-node[id^="node-r-"]')){
       if(user?.role==='reader'){
-        const document=node.closest('[data-rem-type="document"],[data-rem-type="dailyDocument"]');
-        if(document?.dataset.readerEditable!=='true'||node.closest('[data-publication-state]'))continue;
+        if(node.closest('[data-publication-state]'))continue;
       }
       if(node.dataset.localSynced==='true'||node.dataset.layoutOnly==='true'||(node.dataset.publicationState==='protected'&&node.dataset.privateLoaded!=='true'))continue;
       const id=nodeId(node);let a=anchors.get(id);
       if(!a){
         const content=node.querySelector(':scope > .node-content');if(!content)continue;
         const host=doc.createElement('span');host.className='collaboration-ui collaboration-actions';host.dataset.collaborationPrivate='';content.append(host);
-        a={id,node,actionHost:host};a.actions=UI.mount(host,UI.Actions,actionProps(a));anchors.set(id,a);
+        const document=node.closest('[data-rem-type="document"],[data-rem-type="dailyDocument"]');
+        a={id,node,actionHost:host,canEdit:user?.role!=='reader'||document?.dataset.readerEditable==='true'};a.actions=UI.mount(host,UI.Actions,actionProps(a));anchors.set(id,a);
       }
       const state=JSON.stringify([index[id]??null,user?.id,user?.name,user?.owner,user?.role]);
       if(a.renderState!==state){a.renderState=state;render(a);}
