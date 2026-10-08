@@ -86,6 +86,19 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
   };
   const open=async id=>{
     await session.ready;
+    if(!doc.getElementById('node-'+id)){
+      if(!/^r-(?:[a-f0-9]{2}){1,256}$/u.test(id))return false;
+      if(!session.authenticated){
+        if(win.location.hash!=='#node-'+id)return false;
+        pending=id;
+        if(session.status==='unavailable')showReadError('登录验证暂不可用，请重试',()=>retrySession(id));else show();
+        return false;
+      }
+      const owner=session.readerGraph?.nodes?.['node-'+id];
+      if(!owner||owner==='node-'+id)return false;
+      const generation=epoch;
+      return Boolean(await open(owner.replace(/^node-/u,''))&&generation===epoch&&doc.getElementById('node-'+id));
+    }
     if(doc.getElementById('node-'+id)?.dataset.publicationState!=='protected')return false;
     if(opening.get(id)?.generation===epoch)return opening.get(id).task;
     const generation=epoch;
@@ -116,7 +129,7 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
     const id=win.location.hash.slice(1)||root.dataset.documentTitleSource;
     const target=id?doc.getElementById(id):null;
     const context=target?.closest('[data-rem-type="document"],[data-rem-type="dailyDocument"],[data-publication-state="protected"]');
-    if(pending&&context?.id!=='node-'+pending){
+    if(pending&&id!=='node-'+pending&&context?.id!=='node-'+pending&&session.readerGraph?.nodes?.[id]!=='node-'+pending){
       pending=null;close();closeError();
     }
     if(id&&id!==lastRequested){lastRequested=id;void open(id.replace(/^node-/u,''));}
