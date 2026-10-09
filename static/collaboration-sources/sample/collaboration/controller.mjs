@@ -1,6 +1,4 @@
-import DOMPurify from 'dompurify';
 import {createLocalUpdates} from './local-updates.mjs';
-import {readerDocumentChanged,finalizeReaderDocument} from '../reader-document.mjs';
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const visible=element=>element.isConnected&&!element.closest('[hidden],[inert]')&&element.getClientRects().length>0;
 const nodeId=element=>element.id.replace(/^node-/u,'');
@@ -101,7 +99,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
       if(user?.role==='reader'){
         if(node.closest('[data-publication-state]'))continue;
       }
-      if(node.dataset.localSynced==='true'||node.dataset.layoutOnly==='true'||(node.dataset.publicationState==='protected'&&node.dataset.privateLoaded!=='true'))continue;
+      if(node.dataset.localSynced==='true'||node.dataset.layoutOnly==='true'||node.closest('[data-content-state="unavailable"]'))continue;
       const id=nodeId(node);let a=anchors.get(id);
       if(!a){
         // Folded source branches are ordinary dormant content, not hundreds of
@@ -124,24 +122,8 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     try{
       const generation=epoch,authentication=session.epoch;
       if(!await flushAll()){restored.delete(restoredId);return;}
-      // Reload only this canonical source branch using the shared authenticated session.
-      const documentNode=a.node.closest('[data-rem-type="document"],[data-rem-type="dailyDocument"]');
-      const privateDocument=documentNode?.dataset.privateLoaded==='true';
-      const raw=privateDocument?(await(await session.request('/documents/'+nodeId(documentNode))).json()).html:await(await fetch('/blog/',{cache:'no-store',credentials:'omit'})).text();
       if(generation!==epoch||authentication!==session.epoch||!a.node.isConnected)return;
-      localUpdates.remove(a.id);
-      const parsed=new win.DOMParser().parseFromString(DOMPurify.sanitize(raw,{FORBID_TAGS:['script','iframe','object','embed','form','input']}),'text/html');
-      const replacement=parsed.getElementById('node-'+a.id);if(!replacement)throw Error('正式节点尚未出现在当前页面');
-      if(privateDocument){
-        // Existing authorized assets are memory-only blob URLs. Preserve them.
-        for(const asset of replacement.querySelectorAll('[data-private-asset]')){
-          const original=[...a.node.querySelectorAll('[data-private-asset]')].find(x=>x.dataset.privateAsset===asset.dataset.privateAsset);
-          const field=asset.tagName==='IMG'?'src':'href';const value=original?.getAttribute(field);if(value)asset.setAttribute(field,value);
-        }
-        if(documentNode===a.node){replacement.dataset.privateLoaded='true';replacement.dataset.publicationState='protected';}
-      }
-      const incoming=doc.importNode(replacement,true);finalizeReaderDocument(incoming);
-      a.node.replaceWith(incoming);readerDocumentChanged(win,[incoming]);scan();
+      await session.content.refreshNode('node-'+a.id,{beforePublish:()=>localUpdates.remove(a.id)});scan();
     }catch(e){restored.delete(restoredId);noticeError=e.message;renderBell();}
   }
   async function poll(){
@@ -157,13 +139,8 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     }catch(e){if(generation===epoch&&e.name!=='AbortError'){noticeError=e.message;renderBell();}}finally{if(refreshing===generation)refreshing=null;}
   }
   async function jump(notice){
+    await session.ready;
     let target=doc.getElementById('node-'+notice.anchorId);
-    if(!target){
-      const protectedRoot=doc.getElementById('node-'+notice.documentId);
-      if(protectedRoot?.dataset.publicationState==='protected'){
-        win.location.hash='node-'+notice.documentId;await session.open(notice.documentId);target=doc.getElementById('node-'+notice.anchorId);
-      }
-    }
     if(!target){
       // A different full-page document restores and validates the remembered session.
       win.location.href='/blog/?notification='+encodeURIComponent(notice.id)+'#node-'+notice.documentId;return;
