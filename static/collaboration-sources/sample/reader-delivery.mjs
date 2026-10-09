@@ -5,17 +5,18 @@ import {parseReaderMarkup} from './reader-markup.mjs';
 /** Access/transport boundary. It delivers nodes; it never renders a view. */
 export function createReaderDelivery({window:win,session,content,fetcher=fetch}){
   const doc=win.document,purifier=DOMPurify(win),root=doc.querySelector('.reading-outline');
-  let epoch=0,controller=null,task=null,urls=new Set(),state='idle';const assetCache=new Map();
+  let epoch=0,controller=null,task=null,refreshTask=null,urls=new Set(),state='idle';const assetCache=new Map();
   const cancelled=()=>Object.assign(Error('内容读取已取消'),{name:'AbortError'});
   const revoke=values=>{for(const url of values)win.URL.revokeObjectURL(url);};
   function clear(){
-    epoch++;controller?.abort();controller=null;task=null;state='idle';
+    epoch++;controller?.abort();controller=null;task=null;refreshTask=null;state='idle';
     content.setLayer('authorized',[]);revoke(urls);urls=new Set();assetCache.clear();
   }
-  function load({render=true,force=false}={}){
+  function load({render=true,force=false,publication=root?.dataset.publicationVersion}={}){
     if(!root||!session.authenticated||session.user?.role==='reader')return Promise.resolve(false);
-    if(task)return task;if(state==='ready'&&!force)return Promise.resolve(true);
-    const generation=epoch;controller=new AbortController();const signal=controller.signal;state='loading';
+    const generation=epoch;
+    if(task)return force?task.then(()=>{if(generation!==epoch)throw cancelled();return load({render,force,publication});}):task;if(state==='ready'&&!force)return Promise.resolve(true);
+    controller=new AbortController();const signal=controller.signal;state='loading';
     const valid=()=>generation===epoch&&!signal.aborted&&session.authenticated;
     task=(async()=>{
       const created=new Set();
@@ -23,7 +24,7 @@ export function createReaderDelivery({window:win,session,content,fetcher=fetch})
         const payload=await(await session.request('/reader',{signal})).json();
         if(!valid())throw cancelled();
         if(payload.schema!=='website-reader-snapshot-v1'||!/^[a-f0-9]{64}$/u.test(payload.version)||!Array.isArray(payload.documents))throw Error('内容快照无效');
-        if(root?.dataset.publicationVersion&&payload.publication!==root.dataset.publicationVersion)throw Error('网站内容正在更新，请刷新页面后重试');
+        if(publication&&payload.publication!==publication)throw Error('网站内容正在更新，请刷新页面后重试');
         const nodes=[],assets=new Map(),ids=new Set();
         for(const item of payload.documents){
           const node=parseProtectedDocument({document:doc,purifier,payload:item,id:item.id});
@@ -55,15 +56,20 @@ export function createReaderDelivery({window:win,session,content,fetcher=fetch})
       finally{if(generation===epoch){task=null;controller=null;}}
     })();return task;
   }
-  content.setLoader(async()=>{
+  async function refresh(){
     const generation=epoch;
     const html=await(await fetcher('/blog/',{cache:'no-store',credentials:'omit'})).text();
     if(generation!==epoch)throw cancelled();
     const fragment=parseReaderMarkup({document:doc,purifier,html}),base=fragment.querySelector('.reading-outline');
     if(!base)throw Error('页面内容暂不可用');
     // Source refresh is shared by every edit; only this boundary knows transport.
-    if(session.authenticated&&session.user?.role!=='reader')await load({render:false,force:true});
+    if(session.authenticated&&session.user?.role!=='reader')await load({render:false,force:true,publication:base.dataset.publicationVersion});
     if(generation!==epoch)throw cancelled();content.setBase(base);
+    if(root)root.dataset.publicationVersion=base.dataset.publicationVersion??'';
+  }
+  content.setLoader(()=>{
+    if(refreshTask)return refreshTask;
+    const current=refresh().finally(()=>{if(refreshTask===current)refreshTask=null;});refreshTask=current;return current;
   });
   return {load,clear,get state(){return state;},get ready(){return task??Promise.resolve();}};
 }
