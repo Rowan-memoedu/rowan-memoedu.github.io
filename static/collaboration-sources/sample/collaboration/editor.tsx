@@ -49,10 +49,11 @@ function MentionInput(props:any){
 }
 function List(props:any){return <PlateElement {...props} as="ul"/>;}
 function Item(props:any){
-  const [folded,setFolded]=useState(false),{preview}=useContext(Context);
+  const [folded,setFolded]=useState(false),{preview,inlineRoot,titleClasses}=useContext(Context);
+  const title=inlineRoot&&titleClasses&&props.editor.api.findPath(props.element)?.length===2;
   const nested=props.element.children.some((n:any)=>n.type==='ul'||n.type==='ol');
   const focus=()=>{const path=props.editor.api.findPath(props.element);if(path){props.editor.tf.select(props.editor.api.start([...path,0]));props.editor.tf.focus();}};
-  return <PlateElement {...props} as="li" id={'discussion-node-'+props.element.id} className="outline-node collaboration-outline-node" attributes={{...props.attributes,'data-collaboration-node':props.element.id,'data-folded':folded}}>
+  return <PlateElement {...props} as="li" id={'discussion-node-'+props.element.id} className={'outline-node collaboration-outline-node'+(title?' document-current':'')} attributes={{...props.attributes,'data-collaboration-node':props.element.id,'data-folded':folded}}>
     {!preview&&<span className="outline-controls" data-collaboration-controls="" contentEditable={false}>
       <button className="fold-button" type="button" aria-label={folded?'展开子节点':'折叠子节点'} aria-expanded={!folded} disabled={!nested} onMouseDown={e=>e.preventDefault()} onClick={()=>setFolded(v=>!v)}>{nested?(folded?'▸':'▾'):' '}</button>
       <button className="node-focus" type="button" aria-label="聚焦此节点" onMouseDown={e=>e.preventDefault()} onClick={focus}>●</button>
@@ -60,14 +61,14 @@ function Item(props:any){
   </PlateElement>;
 }
 function ContributionLine(props:any){
-  const {onComment,onApprove,owner,readOnly,preview,inlineRoot,comments}=useContext(Context);
+  const {onComment,onApprove,owner,readOnly,preview,inlineRoot,titleClasses,comments}=useContext(Context);
   const path=props.editor.api.findPath(props.element),itemPath=path?.slice(0,-1),parent=itemPath?props.editor.api.node(itemPath)?.[0]:null;
   const count=comments?.[parent?.id]??0;
   const canApprove=itemPath?.length===2||(inlineRoot&&itemPath?.length===4);
   function child(){
     if(itemPath)appendChild(props.editor,itemPath);
   }
-  return <PlateElement {...props} className="node-content" attributes={{...props.attributes,'data-contribution-node':parent?.id}}>
+  return <PlateElement {...props} className={'node-content'+(inlineRoot&&itemPath?.length===2&&titleClasses?' '+titleClasses:'')} attributes={{...props.attributes,'data-contribution-node':parent?.id}}>
     {props.children}
     {!preview&&<span contentEditable={false} className="collaboration-row-actions" onMouseDown={e=>e.preventDefault()}>
       {owner&&<button type="button" className="collaboration-action collaboration-transient" role="checkbox" aria-checked="false" aria-label="采纳此节点及子树" disabled={readOnly||!canApprove} title={!canApprove?'父节点尚未采纳，请采纳其父级子树':'采纳此节点及其子树'} onClick={()=>onApprove?.(parent.id)}><SquareIcon/></button>}
@@ -81,7 +82,7 @@ function Strong(props:any){return <PlateLeaf {...props} as="strong"/>;}
 function Em(props:any){return <PlateLeaf {...props} as="em"/>;}
 function Code(props:any){return <PlateLeaf {...props} as="code"/>;}
 
-export function RichEditor({initial,tree=false,inlineRoot=false,preview=false,readOnly=false,users=[],onChange,onEmpty,onComment,onApprove,owner=false,comments={},editorRef,placeholder='',label='协作编辑器',onSubmit}:any){
+export function RichEditor({initial,tree=false,inlineRoot=false,titleClasses='',preview=false,readOnly=false,users=[],onChange,onEmpty,onComment,onApprove,owner=false,comments={},editorRef,placeholder='',label='协作编辑器',onSubmit}:any){
   const plugins=useMemo(()=>[
     ParagraphPlugin.withComponent(ParagraphElement),BoldPlugin.withComponent(Strong),ItalicPlugin.withComponent(Em),CodePlugin.withComponent(Code),
     LinkPlugin.configure({options:{allowedSchemes:['https','http','mailto'],dangerouslySkipSanitization:false}}).withComponent(LinkElement),
@@ -138,7 +139,7 @@ export function RichEditor({initial,tree=false,inlineRoot=false,preview=false,re
     });
     editor.tf.select(ref?.unref()??editor.api.start([]));editor.tf.focus();
   }
-  return <Context.Provider value={{users,onComment,onApprove,owner,readOnly,preview,inlineRoot,comments}}><Plate editor={editor} readOnly={readOnly} onValueChange={changed}>
+  return <Context.Provider value={{users,onComment,onApprove,owner,readOnly,preview,inlineRoot,titleClasses,comments}}><Plate editor={editor} readOnly={readOnly} onValueChange={changed}>
     <Popover open={linkOpen} onOpenChange={setLinkOpen}><PopoverAnchor asChild><EditorContainer className={tree?'collaboration-outline-editor':'collaboration-comment-editor'} variant="default" data-collaboration-tree={tree?'':undefined}>
       <Editor variant="none" aria-label={label} placeholder={placeholder} onFocus={()=>{if(tree&&!editor.selection)editor.tf.select(editor.api.start([]));}} onKeyDownCapture={keydown} onCompositionStart={()=>{composing.current=true;}} onCompositionEnd={()=>{composing.current=false;queueMicrotask(changed);}} onPaste={e=>{if(e.clipboardData.files.length){e.preventDefault();setError('暂不支持图片或附件');}}}/>
     </EditorContainer></PopoverAnchor><PopoverContent aria-label="插入链接" className="collaboration-link-dialog"><form onSubmit={e=>{e.preventDefault();try{const target=new URL(url);if(!['http:','https:','mailto:'].includes(target.protocol))throw Error('请输入有效链接');if(linkSelection.current)editor.tf.select(linkSelection.current);const text=editor.api.string(editor.selection) || url;editor.tf.insertNodes({type:'a',url,children:[{text}]});setLinkOpen(false);editor.tf.focus();}catch{setError('请输入 http、https 或 mailto 链接');}}}><label>链接地址<input autoFocus required value={url} onChange={e=>setUrl(e.target.value)}/></label><Button type="submit" size="sm">插入</Button></form></PopoverContent></Popover>

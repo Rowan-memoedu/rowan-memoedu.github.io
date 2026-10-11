@@ -35,7 +35,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     }});
   }
   function actionProps(a){return {api,anchorId:a.id,entry:index[a.id],data:a.data,canEdit:a.data?.canEdit??a.canEdit,onAdd:()=>add(a),onEdit:()=>add(a,'edit'),onOpen:()=>load(a),refresh:()=>load(a,true),openKey:a.openKey,highlight:a.target?.sourceId};}
-  function groupProps(a){return {api,anchorId:a.id,data:a.data,refresh:()=>load(a,true),onAccepted:proposal=>restore(a,proposal),registerSave,notificationTarget:a.target};}
+  function groupProps(a){return {api,anchorId:a.id,data:a.data,refresh:()=>load(a,true),onAccepted:proposal=>restore(a,proposal),registerSave,notificationTarget:a.target,titleClasses:[...(a.node.querySelector(':scope > .node-content')?.classList??[])].filter(c=>c.startsWith('document-title')).join(' ')};}
   function render(a){
     if(!a.node.isConnected)return;
     if(a.data?.proposals.some(p=>p.status==='adopting')&&doc.visibilityState!=='hidden'){
@@ -65,7 +65,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
   function restoreNative(a){a.native?.forEach(({el,hidden})=>{el.hidden=hidden;});a.native=null;delete a.node.dataset.collaborationEditing;}
   function cleanContainer(a){const container=a.node.querySelector(':scope > [data-collaboration-container]');if(container&&!container.children.length){container.remove();win.dispatchEvent(new win.CustomEvent('personal-outline-changed',{detail:{nodeIds:[a.node.id]}}));}}
   async function load(a,refresh=false){
-    if(a.loading){await a.loading;return a.data;}
+    if(a.loading){await a.loading;if(!refresh)return a.data;}
     const generation=epoch;
     a.loading=(async()=>{
       try{const data=await api.get('anchors/'+a.id);if(generation!==epoch||!a.node.isConnected)return;
@@ -168,6 +168,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     scan();
     const a=anchors.get(notice.anchorId);if(!a)throw Error('请先进入并加载该文档');
     a.target=notice;await load(a);
+    if(generation!==epoch||authentication!==session.epoch)throw cancelled();
     const insideProposal=notice.proposalId&&a.data.proposals.some(p=>p.id===notice.proposalId);
     if(!insideProposal&&!notice.sourceId.startsWith('node:'))a.openKey=Date.now();
     render(a);
@@ -214,7 +215,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
       scan();await poll();if(generation!==epoch)return;
       timer=win.setInterval(()=>{if(doc.visibilityState!=='hidden')void poll();},15000);
       const notification=new URL(win.location.href).searchParams.get('notification');
-      if(notification){const notice=inbox.items.find(n=>n.id===notification);if(notice)await jump(notice);}
+      if(notification){const notice=inbox.items.find(n=>n.id===notification)??await api.get('inbox/'+encodeURIComponent(notification));await jump(notice);}
     }catch(e){if(generation===epoch&&e.name!=='AbortError'){
       noticeError=e.message;renderBell();
       if(!bell){

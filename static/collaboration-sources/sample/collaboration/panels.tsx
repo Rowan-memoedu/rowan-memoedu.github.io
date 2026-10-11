@@ -73,7 +73,7 @@ export function Actions({api,anchorId,entry,onAdd,onEdit,onOpen,openKey,data,ref
     {error&&!open&&<span role="status" className="text-xs text-destructive">{error}</span>}</>;
 }
 
-function Proposal({api,proposal,anchorId,data,refresh,onAccepted,registerSave,notificationTarget}:any){
+function Proposal({api,proposal,anchorId,data,refresh,onAccepted,registerSave,notificationTarget,titleClasses}:any){
   const [state,setState]=useState('saved'),[error,setError]=useState(''),[users,setUsers]=useState([]),[preview,setPreview]=useState<any>(null),[commentNode,setCommentNode]=useState<string|null>(null),[remote,setRemote]=useState<any>(null),[version,setVersion]=useState(0);
   const current=useRef(proposal),initial=useRef(proposal.nodes),save=useRef<any>(null),latest=useRef(proposal),editor=useRef<any>(null),mounted=useRef(true);
   latest.current=proposal;
@@ -106,7 +106,7 @@ function Proposal({api,proposal,anchorId,data,refresh,onAccepted,registerSave,no
   return <div className="collaboration-contribution" data-proposal-id={proposal.id} data-status={proposal.status}>
     <div className={adopting||proposal.operation?.status==='synced'||['error','conflict'].includes(state)?'collaboration-save-state':'collaboration-visually-hidden'}><span role="status">{proposal.operation?.status==='synced'?'已同步 RemNote，等待网站发布':adopting?(proposal.status==='accepted'?'已采纳':proposal.operation?.status==='attention'?(proposal.operation.error==='unsupported-format'?'当前格式不能无损同步，请保留原引用文字及格式；其他原生格式请在 RemNote 中修改':'同步需要核查，请站长查看本机记录'):proposal.operation?.status==='retry'?'同步暂未完成，将继续重试':'正在同步到 RemNote…'):statusText[state]}</span>
     </div>
-    {(proposal.status!=='accepted'||history)&&initial.current.length>0&&<>{history&&<p className="text-xs">私密讨论历史（正式正文中的 @ 已移除）</p>}<RichEditor key={version} initial={initial.current} tree inlineRoot={proposal.kind==='edit'} users={users} readOnly={adopting||state==='conflict'} editorRef={editor} onChange={(nodes:any)=>save.current.change(nodes)} onEmpty={(children:any)=>void removeEmpty(children)} comments={comments} owner={api.user.owner} onComment={setCommentNode} onApprove={showPreview} label={history?'私密讨论历史':proposal.kind==='edit'?'修改节点编辑器':'新增子节点编辑器'}/></>}
+    {(proposal.status!=='accepted'||history)&&initial.current.length>0&&<>{history&&<p className="text-xs">私密讨论历史（正式正文中的 @ 已移除）</p>}<RichEditor key={version} initial={initial.current} tree inlineRoot={proposal.kind==='edit'} titleClasses={titleClasses} users={users} readOnly={adopting||state==='conflict'} editorRef={editor} onChange={(nodes:any)=>save.current.change(nodes)} onEmpty={(children:any)=>void removeEmpty(children)} comments={comments} owner={api.user.owner} onComment={setCommentNode} onApprove={showPreview} label={history?'私密讨论历史':proposal.kind==='edit'?'修改节点编辑器':'新增子节点编辑器'}/></>}
     {error&&<p role="status" className="text-sm text-destructive">{error}</p>}
     {state==='error'&&<Button variant="outline" size="sm" onClick={()=>void save.current.flush()}>重试保存</Button>}
     {state==='conflict'&&<div><Button variant="outline" size="sm" onClick={()=>void conflict()}>对照最新版本</Button>{remote&&<><p>对方的最新内容：</p><RichEditor key={'remote-'+remote.revision} initial={remote.nodes} tree readOnly/>
