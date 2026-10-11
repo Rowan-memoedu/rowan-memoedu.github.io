@@ -63,13 +63,13 @@ export function DiscussionPanel({api,anchorId,data,proposalId,proposalNodeId,inc
 export function Actions({api,anchorId,entry,onAdd,onEdit,onOpen,openKey,data,refresh,highlight,canEdit=true}:any){
   const [open,setOpen]=useState(false),[error,setError]=useState('');
   useEffect(()=>{if(openKey)setOpen(true);},[openKey]);
-  return <><Popover open={open} onOpenChange={value=>{setOpen(value);if(value)void onOpen().catch((e:any)=>setError(e.message));}}>
+  return <><Popover open={open} onOpenChange={value=>{setOpen(value);if(value){setError('');void onOpen().catch((e:any)=>setError(e.message));}}}>
     <PopoverTrigger asChild><button type="button" className={'collaboration-action '+(entry?.comments?'collaboration-comment-existing':'collaboration-transient')} aria-label={entry?.comments?`查看 ${entry.comments} 条批注`:'添加批注'}><MessageSquareTextIcon/>{entry?.comments>0&&<span>{entry.comments}</span>}</button></PopoverTrigger>
     <PopoverContent className="collaboration-discussion-popover" side="bottom" align="end" onOpenAutoFocus={e=>e.preventDefault()}>
       {error?<p role="status" className="p-4">{error}</p>:data?<DiscussionPanel api={api} anchorId={anchorId} data={data} refresh={refresh} highlight={highlight} onClose={()=>setOpen(false)}/>:<p className="p-4" role="status">正在加载批注…</p>}
     </PopoverContent></Popover>
-    {canEdit&&<button type="button" className="collaboration-action collaboration-transient" aria-label="添加子节点" onClick={()=>void onAdd().catch((e:any)=>setError(e.message))}><PlusIcon/></button>}
-    {canEdit&&<button type="button" className="collaboration-action collaboration-transient" aria-label="修改节点" onClick={()=>void onEdit().catch((e:any)=>setError(e.message))}><PencilIcon/></button>}
+    {canEdit&&<button type="button" className="collaboration-action collaboration-transient" aria-label="添加子节点" onClick={()=>{setError('');void onAdd().catch((e:any)=>setError(e.message));}}><PlusIcon/></button>}
+    {canEdit&&<button type="button" className="collaboration-action collaboration-transient" aria-label="修改节点" onClick={()=>{setError('');void onEdit().catch((e:any)=>setError(e.message));}}><PencilIcon/></button>}
     {error&&!open&&<span role="status" className="text-xs text-destructive">{error}</span>}</>;
 }
 
