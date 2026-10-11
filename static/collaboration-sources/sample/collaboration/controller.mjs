@@ -34,15 +34,15 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
       try{const next=await api.get('inbox?offset='+inbox.nextOffset);const unique=new Map([...inbox.items,...next.items].map(n=>[n.id,n]));inbox={...next,items:[...unique.values()]};renderBell();}catch(e){noticeError=e.message;renderBell();}
     }});
   }
-  function actionProps(a){return {api,anchorId:a.id,entry:index[a.id],data:a.data,canEdit:a.data?.canEdit??a.canEdit,onAdd:()=>add(a),onEdit:()=>add(a,'edit'),onOpen:()=>load(a),refresh:()=>load(a,true),openKey:a.openKey,highlight:a.target?.sourceId};}
-  function groupProps(a){return {api,anchorId:a.id,data:a.data,refresh:()=>load(a,true),onAccepted:proposal=>restore(a,proposal),registerSave,notificationTarget:a.target,titleClasses:[...(a.node.querySelector(':scope > .node-content')?.classList??[])].filter(c=>c.startsWith('document-title')).join(' ')};}
+  function actionProps(a){return {api,anchorId:a.id,entry:index[a.id],data:a.data,canEdit:a.data?.canEdit??a.canEdit,onEdit:()=>add(a,'outline'),onOpen:()=>load(a),refresh:()=>load(a,true),openKey:a.openKey,highlight:a.target?.sourceId};}
+  function groupProps(a){return {api,anchorId:a.id,data:a.data,refresh:()=>load(a,true),onAccepted:proposal=>restore(a,proposal),registerSave,notificationTarget:a.target,nativeMarkup:a.nativeMarkup,titleClasses:[...((a.editNode??a.node).querySelector(':scope > .node-content')?.classList??[])].filter(c=>c.startsWith('document-title')).join(' ')};}
   function render(a){
     if(!a.node.isConnected)return;
     if(a.data?.proposals.some(p=>p.status==='adopting')&&doc.visibilityState!=='hidden'){
       a.syncTimer??=win.setTimeout(()=>{a.syncTimer=null;if(api&&a.node.isConnected)void load(a).catch(()=>{});},1200);
     }else{win.clearTimeout(a.syncTimer);a.syncTimer=null;}
     a.actions.update(actionProps(a));
-    if(a.data?.proposals.some(p=>p.kind!=='edit')){
+    if(a.data?.proposals.some(p=>!['edit','outline'].includes(p.kind))){
       if(!a.group){
         let container=a.node.querySelector(':scope > .document-body')??a.node.querySelector(':scope > ul');
         if(!container){container=doc.createElement('ul');container.dataset.collaborationContainer='';a.node.append(container);}
@@ -51,18 +51,26 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
         win.dispatchEvent(new win.CustomEvent('personal-outline-changed',{detail:{nodeIds:[a.node.id]}}));
       }else a.group.update(groupProps(a));
     }else if(a.group){a.group.dispose();a.groupHost.remove();a.group=null;a.groupHost=null;cleanContainer(a);}
-    if(a.data?.proposals.some(p=>p.kind==='edit')){
+    if(a.data?.proposals.some(p=>['edit','outline'].includes(p.kind)&&['draft','adopting'].includes(p.status))){
       if(!a.editGroup){
-        const content=a.node.querySelector(':scope > .node-content');
-        a.node.dataset.collaborationEditing='true';
-        a.native=[content,a.node.querySelector(':scope > .outline-controls')].filter(Boolean).map(el=>({el,hidden:el.hidden}));
+        const outline=a.data.proposals.find(p=>p.kind==='outline'&&['draft','adopting'].includes(p.status))?.outline;
+        a.editNode=outline?doc.getElementById('node-'+outline.documentId):a.node;
+        if(!a.editNode)return;
+        a.nativeMarkup={};
+        for(const node of [a.editNode,...a.editNode.querySelectorAll('.outline-node[id^="node-r-"]')]){
+          const source=node.querySelector(':scope > .node-content');if(!source)continue;
+          const cloned=source.cloneNode(true);cloned.querySelectorAll('.collaboration-ui').forEach(el=>el.remove());a.nativeMarkup[nodeId(node)]=cloned.innerHTML;
+        }
+        const content=a.editNode.querySelector(':scope > .node-content');
+        a.editNode.dataset.collaborationEditing='true';
+        a.native=[content,a.editNode.querySelector(':scope > .outline-controls'),...(outline?[...a.editNode.children].filter(el=>el.matches('ul,.document-body')):[])].filter(Boolean).map(el=>({el,hidden:el.hidden}));
         a.native.forEach(({el})=>{el.hidden=true;});
         const host=doc.createElement('div');host.className='collaboration-ui collaboration-edit-host';host.dataset.collaborationPrivate='';
         content.before(host);a.editHost=host;a.editGroup=UI.mount(host,UI.ProposalGroup,{...groupProps(a),edit:true});
       }else a.editGroup.update({...groupProps(a),edit:true});
     }else if(a.editGroup){a.editGroup.dispose();a.editHost.remove();a.editGroup=null;a.editHost=null;restoreNative(a);}
   }
-  function restoreNative(a){a.native?.forEach(({el,hidden})=>{el.hidden=hidden;});a.native=null;delete a.node.dataset.collaborationEditing;}
+  function restoreNative(a){a.native?.forEach(({el,hidden})=>{el.hidden=hidden;});a.native=null;delete (a.editNode??a.node).dataset.collaborationEditing;a.editNode=null;}
   function cleanContainer(a){const container=a.node.querySelector(':scope > [data-collaboration-container]');if(container&&!container.children.length){container.remove();win.dispatchEvent(new win.CustomEvent('personal-outline-changed',{detail:{nodeIds:[a.node.id]}}));}}
   async function load(a,refresh=false){
     if(a.loading){await a.loading;if(!refresh)return a.data;}
@@ -75,10 +83,10 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     })();
     try{await a.loading;if(refresh)void poll();return a.data;}finally{a.loading=null;}
   }
-  async function add(a,mode='add'){
-    await api.post('proposals',{requestId:crypto.randomUUID(),anchorId:a.id,...(mode==='edit'?{mode}:{})});await load(a,true);
+  async function add(a,mode='outline'){
+    await api.post('proposals',{requestId:crypto.randomUUID(),anchorId:a.id,mode});await load(a,true);
     // Wait for React to commit before moving focus to the empty new child.
-    for(let i=0;i<20;i++){const fields=(mode==='edit'?a.editHost:a.groupHost)?.querySelectorAll('[contenteditable=true]');if(fields?.length){fields[fields.length-1].focus();break;}await delay(40);}
+    for(let i=0;i<20;i++){const fields=a.editHost?.querySelectorAll('[contenteditable=true]');if(fields?.length){fields[fields.length-1].focus();break;}await delay(40);}
   }
   function scheduleScan(){
     if(scanQueued)return;

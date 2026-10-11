@@ -33,11 +33,22 @@ const personalPrepareSearchPreview=function prepareSearchPreview(container,conte
       link.textContent=documentType&&(node.dataset.readerAccess==='invitation'||node.dataset.publicationState==='protected')?(node.dataset.contentState==='unavailable'||node.dataset.publicationState==='protected'?'🔒':'🔓'):documentType&&node.dataset.publicationState==='draft'?'🖊️':number?number+'.':documentType?'📄':'·';
       link.setAttribute('aria-label','聚焦此节点');link.title='打开此节点';controls.append(link);node.prepend(controls);
       for(const open of node.querySelectorAll(':scope > .document-body [data-protected-open]')){
+        if(open.closest('.outline-node')!==node)continue;
         const a=doc.createElement('a');a.href=nodeHref(id);a.textContent='打开页面';open.replaceWith(a);
       }
     }
   }
-  for(const link of container.querySelectorAll('a[href^="#node-"]'))link.href=nodeHref(link.getAttribute('href').slice(1));
+  for(const link of container.querySelectorAll('a[href^="#"]'))if(link.namespaceURI==='http://www.w3.org/1999/xhtml')link.href=nodeHref(link.getAttribute('href').slice(1));
+  const refs=new Map(),win=doc.defaultView,prefix='search-svg-'+(win.personalSearchSvgNamespace=(win.personalSearchSvgNamespace??0)+1)+'-';
+  for(const e of [container,...container.querySelectorAll('[id]')])if(e.id){
+    const id=e.id;e.dataset.searchNodeId??=id;
+    if(e.namespaceURI==='http://www.w3.org/2000/svg'){refs.set(id,prefix+id);e.id=prefix+id;}else e.removeAttribute('id');
+  }
+  for(const e of container.querySelectorAll('svg,svg *'))for(const attribute of ['href','xlink:href','clip-path','mask','filter','fill','stroke','marker-start','marker-mid','marker-end','style']){
+    const value=e.getAttribute(attribute);if(!value)continue;
+    if(value.startsWith('#')&&refs.has(value.slice(1)))e.setAttribute(attribute,'#'+refs.get(value.slice(1)));
+    else e.setAttribute(attribute,value.replace(/url\(#([^)]*)\)/gu,(all,id)=>refs.has(id)?'url(#'+refs.get(id)+')':all));
+  }
 };const personalPositionSearch=function positionSearchPreview(preview,isCurrent=()=>true,query=''){
   const doc=preview.ownerDocument,win=doc.defaultView;
   preview.personalSearchDispose?.();

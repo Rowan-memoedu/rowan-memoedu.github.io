@@ -36,6 +36,40 @@ export function createLocalUpdates(win){
       if(applied.has(update.id))continue;
       const parsed=update.fragments.map(parse),undo=[],ids=[];
       try{
+        if(update.kind==='outline'){
+          const document=doc.getElementById('node-'+update.documentId);
+          const parent=doc.getElementById('node-'+update.parentId);
+          if(!document||!parent||parent!==document&&!document.contains(parent))throw Error('层级修改不能跨出当前文档');
+          const readonly=new Set(update.readonlyIds??[]);
+          function merge(incoming,targetParent,before=null){
+            const existing=doc.getElementById(incoming.id);
+            if(existing&&existing!==document&&!document.contains(existing))throw Error('原节点不属于当前文档');
+            const target=existing??incoming.cloneNode(false);
+            if(!existing){target.append(...[...incoming.children].filter(n=>n.matches('.node-content,.outline-controls')).map(n=>n.cloneNode(true)));target.dataset.localSynced='true';undo.push(()=>target.remove());}
+            else if(!readonly.has(incoming.id.replace(/^node-/u,''))){
+              const content=target.querySelector(':scope > .node-content'),line=incoming.querySelector(':scope > .node-content');
+              const controls=[...content.children].filter(n=>n.matches('.collaboration-actions'));
+              const original=[...content.childNodes].filter(n=>!controls.includes(n)),label=content.dataset.nodeLabel;
+              original.forEach(n=>n.remove());content.prepend(...[...line.childNodes].map(n=>n.cloneNode(true)));content.dataset.nodeLabel=line.dataset.nodeLabel;
+              undo.push(()=>{for(const n of [...content.childNodes])if(!controls.includes(n))n.remove();content.prepend(...original);content.dataset.nodeLabel=label;});
+            }
+            if(target!==document){
+              const oldParent=target.parentNode,next=target.nextSibling;
+              childList(targetParent,undo).insertBefore(target,before);
+              if(existing)undo.push(()=>oldParent.insertBefore(target,next?.parentNode===oldParent?next:null));
+            }
+            let previous=null;
+            for(const child of [...incoming.querySelectorAll('.outline-node')].filter(n=>n.parentElement.closest('.outline-node')===incoming)){
+              const list=childList(target,undo);const next=previous?previous.nextSibling:list.firstChild;
+              const childTarget=merge(child,target,next===doc.getElementById(child.id)?next.nextSibling:next);previous=childTarget;
+            }
+            ids.push(target.id);return target;
+          }
+          const sibling=update.siblingId?doc.getElementById('node-'+update.siblingId):null;
+          const before=update.position==='before'?sibling:update.position==='after'?sibling?.nextSibling:null;
+          for(const node of parsed)merge(node,parent,before);
+          applied.set(update.id,{anchorId,undo,ids});changed(ids);continue;
+        }
         for(const node of parsed){
           const existing=doc.getElementById(node.id);
           if(update.kind==='edit'){

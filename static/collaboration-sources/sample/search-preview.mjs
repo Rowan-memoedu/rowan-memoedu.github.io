@@ -34,36 +34,31 @@ export function prepareSearchPreview(container,context={}){
       link.textContent=documentType&&(node.dataset.readerAccess==='invitation'||node.dataset.publicationState==='protected')?(node.dataset.contentState==='unavailable'||node.dataset.publicationState==='protected'?'🔒':'🔓'):documentType&&node.dataset.publicationState==='draft'?'🖊️':number?number+'.':documentType?'📄':'·';
       link.setAttribute('aria-label','聚焦此节点');link.title='打开此节点';controls.append(link);node.prepend(controls);
       for(const open of node.querySelectorAll(':scope > .document-body [data-protected-open]')){
+        if(open.closest('.outline-node')!==node)continue;
         const a=doc.createElement('a');a.href=nodeHref(id);a.textContent='打开页面';open.replaceWith(a);
       }
     }
   }
-  for(const link of container.querySelectorAll('a[href^="#node-"]'))link.href=nodeHref(link.getAttribute('href').slice(1));
+  for(const link of container.querySelectorAll('a[href^="#"]'))if(link.namespaceURI==='http://www.w3.org/1999/xhtml')link.href=nodeHref(link.getAttribute('href').slice(1));
+  const refs=new Map(),win=doc.defaultView,prefix='search-svg-'+(win.personalSearchSvgNamespace=(win.personalSearchSvgNamespace??0)+1)+'-';
+  for(const e of [container,...container.querySelectorAll('[id]')])if(e.id){
+    const id=e.id;e.dataset.searchNodeId??=id;
+    if(e.namespaceURI==='http://www.w3.org/2000/svg'){refs.set(id,prefix+id);e.id=prefix+id;}else e.removeAttribute('id');
+  }
+  for(const e of container.querySelectorAll('svg,svg *'))for(const attribute of ['href','xlink:href','clip-path','mask','filter','fill','stroke','marker-start','marker-mid','marker-end','style']){
+    const value=e.getAttribute(attribute);if(!value)continue;
+    if(value.startsWith('#')&&refs.has(value.slice(1)))e.setAttribute(attribute,'#'+refs.get(value.slice(1)));
+    else e.setAttribute(attribute,value.replace(/url\(#([^)]*)\)/gu,(all,id)=>refs.has(id)?'url(#'+refs.get(id)+')':all));
+  }
 }
 
 /** A projection of the reader's canonical tree. No content requests or body cache. */
 export function attachSearchPreview(reader,{window:win=window}={}){
   const doc=win.document,originals=new WeakMap(),contexts=new WeakMap();
-  let epoch=0,svgNamespace=0;
-  const cleanIds=node=>{
-    const refs=new Map(),prefix='search-svg-'+(++svgNamespace)+'-';
-    for(const e of [node,...node.querySelectorAll('[id]')])if(e.id){
-      const id=e.id;e.dataset.searchNodeId=id;
-      if(e.namespaceURI==='http://www.w3.org/2000/svg'){refs.set(id,prefix+id);e.id=prefix+id;}else e.removeAttribute('id');
-    }
-    for(const e of node.querySelectorAll('svg *'))for(const attribute of ['href','xlink:href','clip-path','mask','filter']){
-      const value=e.getAttribute(attribute);if(!value)continue;
-      if(value.startsWith('#')&&refs.has(value.slice(1)))e.setAttribute(attribute,'#'+refs.get(value.slice(1)));
-      else e.setAttribute(attribute,value.replace(/url\(#([^)]*)\)/gu,(all,id)=>refs.has(id)?'url(#'+refs.get(id)+')':all));
-    }
-  };
+  let epoch=0;
   function project(container,context){
     const view=originals.get(container).cloneNode(true);reader.content.project(view);
-    for(const button of view.querySelectorAll('[data-protected-open]')){
-      const node=button.closest('.outline-node'),link=doc.createElement('a');
-      link.href='/blog/'+(context.slug==='index'?'':context.slug)+'#'+node.id;link.textContent='打开页面';button.replaceWith(link);
-    }
-    cleanIds(view);container.replaceChildren(...view.childNodes);
+    container.replaceChildren(...view.childNodes);
     prepareSearchPreview(container,context);
     win.dispatchEvent(new win.CustomEvent('personal-code-blocks-changed',{detail:{container}}));
     container.dispatchEvent(new win.CustomEvent('personal-search-preview-changed',{bubbles:true}));
