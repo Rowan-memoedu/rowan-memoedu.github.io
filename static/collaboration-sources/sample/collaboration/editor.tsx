@@ -1,16 +1,17 @@
 /* MIT. Plate list/mention/equation components bound to existing outline rows. */
 import React,{createContext,useContext,useMemo,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
 import 'katex/dist/katex.min.css';
 import {Plate,PlateElement,PlateLeaf,usePlateEditor,ParagraphPlugin} from 'platejs/react';
 import {BoldPlugin,ItalicPlugin,CodePlugin} from '@platejs/basic-nodes/react';
 import {ListPlugin,ListItemPlugin,ListItemContentPlugin} from '@platejs/list-classic/react';
 import {getListItemEntry,moveListItemsToList,indentListItems,unindentListItems} from '@platejs/list-classic';
-import {DndContext,PointerSensor,KeyboardSensor,useSensor,useSensors,useDraggable,useDroppable,closestCenter,pointerWithin} from '@dnd-kit/core';
+import {DndContext,DragOverlay,PointerSensor,KeyboardSensor,useSensor,useSensors,useDraggable,useDroppable,closestCenter,pointerWithin} from '@dnd-kit/core';
 import {MentionPlugin,MentionInputPlugin} from '@platejs/mention/react';
 import {getMentionOnSelectItem} from '@platejs/mention';
 import {LinkPlugin} from '@platejs/link/react';
 import {InlineEquationPlugin} from '@platejs/math/react';
-import {MessageSquareTextIcon,PencilIcon,SquareIcon} from 'lucide-react';
+import {MessageSquareTextIcon,SquareIcon} from 'lucide-react';
 import {Editor,EditorContainer} from '../upstream/collaboration/plate/registry/ui/editor';
 import {ParagraphElement} from '../upstream/collaboration/plate/registry/ui/paragraph-node';
 import {MentionElement} from '../upstream/collaboration/plate/registry/ui/mention-node';
@@ -24,7 +25,15 @@ import {toTree,fromTree,toComment,fromComment,fromInline,textOf} from './model.m
 const Context=createContext<any>({users:[],readOnly:false});
 const selectMention=getMentionOnSelectItem();
 const uid=()=>crypto.randomUUID();
-const collisions=(args:any)=>{const hits=pointerWithin(args);return hits.length?hits:closestCenter(args);};
+const collisions=(args:any)=>{
+  const from=args.active.data.current?.path;
+  const droppableContainers=args.droppableContainers.filter((drop:any)=>{
+    const to=drop.data.current?.path;
+    return !from||!to||!from.every((v:number,i:number)=>to[i]===v);
+  });
+  const targets={...args,droppableContainers},hits=pointerWithin(targets);
+  return hits.length?hits:closestCenter(targets);
+};
 // Open the same Plate mention input used by typing @, retaining the caret.
 export function openMentionPicker(editor:any){
   if(!editor)return;
@@ -53,14 +62,17 @@ function List(props:any){return <PlateElement {...props} as="ul"/>;}
 function Item(props:any){
   const [folded,setFolded]=useState(false),{preview,inlineRoot,titleClasses,mutable,outline,readOnly}=useContext(Context);
   const editable=mutable?.(props.element.id)??true;
-  const drag=useDraggable({id:props.element.id,disabled:!outline||!editable||readOnly||preview});
-  const title=inlineRoot&&titleClasses&&props.editor.api.findPath(props.element)?.length===2;
+  const path=props.editor.api.findPath(props.element);
+  const fixedRoot=inlineRoot&&path?.length===2;
+  const draggable=editable&&!readOnly&&!preview&&!fixedRoot;
+  const drag=useDraggable({id:props.element.id,data:{path},disabled:!draggable});
+  const title=inlineRoot&&titleClasses&&path?.length===2;
   const nested=props.element.children.some((n:any)=>n.type==='ul'||n.type==='ol');
   const focus=()=>{const path=props.editor.api.findPath(props.element);if(path){props.editor.tf.select(props.editor.api.start([...path,0]));props.editor.tf.focus();}};
-  return <PlateElement {...props} as="li" id={'discussion-node-'+props.element.id} className={'outline-node collaboration-outline-node'+(title?' document-current':'')} attributes={{...props.attributes,'data-collaboration-node':props.element.id,'data-folded':folded,'data-editable':editable,'data-dragging':drag.isDragging}}>
+  return <PlateElement {...props} ref={drag.setNodeRef} as="li" id={'discussion-node-'+props.element.id} className={'outline-node collaboration-outline-node'+(title?' document-current':'')} attributes={{...props.attributes,'data-collaboration-node':props.element.id,'data-folded':folded,'data-editable':editable&&!readOnly&&!preview,'data-draggable':draggable,'data-dragging':drag.isDragging}}>
     {!preview&&<span className="outline-controls" data-collaboration-controls="" contentEditable={false}>
       <button className="fold-button" type="button" aria-label={folded?'展开子节点':'折叠子节点'} aria-expanded={!folded} disabled={!nested} onMouseDown={e=>e.preventDefault()} onClick={()=>setFolded(v=>!v)}>{nested?(folded?'▸':'▾'):' '}</button>
-      <button ref={drag.setNodeRef} {...drag.attributes} {...drag.listeners} className="node-focus" type="button" aria-label={outline&&editable?'拖动节点或聚焦此节点':'聚焦此节点'} onMouseDown={e=>e.preventDefault()} onClick={focus}>●</button>
+      <button ref={drag.setActivatorNodeRef} {...(draggable?drag.attributes:{})} {...drag.listeners} className="node-focus" type="button" aria-label={draggable?'拖动节点或聚焦此节点':'聚焦此节点'} onMouseDown={e=>e.preventDefault()} onClick={focus}>●</button>
     </span>}{props.children}
   </PlateElement>;
 }
@@ -69,14 +81,13 @@ function ContributionLine(props:any){
   const path=props.editor.api.findPath(props.element),itemPath=path?.slice(0,-1),parent=itemPath?props.editor.api.node(itemPath)?.[0]:null;
   const count=comments?.[parent?.id]??0;
   const editable=mutable?.(parent?.id)??true;
-  const drop=useDroppable({id:parent?.id??props.element.id,disabled:!outline||preview||readOnly||parent?.id===outline.documentId});
+  const drop=useDroppable({id:parent?.id??props.element.id,data:{path:itemPath},disabled:preview||readOnly||inlineRoot&&itemPath?.length===2});
   const canApprove=outline?editable&&!!itemPath:itemPath?.length===2||(inlineRoot&&itemPath?.length===4);
   return <PlateElement {...props} ref={drop.setNodeRef} contentEditable={editable?undefined:false} className={'node-content'+(inlineRoot&&itemPath?.length===2&&titleClasses?' '+titleClasses:'')} attributes={{...props.attributes,'data-contribution-node':parent?.id,'data-drop-target':drop.isOver}}>
     {!editable&&nativeMarkup?.[parent?.id]?<><span contentEditable={false} dangerouslySetInnerHTML={{__html:nativeMarkup[parent.id]}}/><span hidden>{props.children}</span></>:props.children}
     {!preview&&<span contentEditable={false} className="collaboration-row-actions" onMouseDown={e=>e.preventDefault()}>
       {owner&&editable&&<button type="button" className="collaboration-action collaboration-transient" role="checkbox" aria-checked="false" aria-label="采纳此节点及子树" disabled={readOnly||!canApprove} title={!canApprove?'父节点尚未采纳，请采纳其父级子树':'采纳此节点及其子树'} onClick={()=>onApprove?.(parent.id)}><SquareIcon/></button>}
       <button type="button" className={'collaboration-action '+(count?'collaboration-comment-existing':'collaboration-transient')} aria-label={count?`查看 ${count} 条子节点批注`:'批注此子节点'} onClick={()=>onComment?.(parent.id)}><MessageSquareTextIcon/>{count>0&&<span>{count}</span>}</button>
-      {editable&&<button type="button" className="collaboration-action collaboration-transient" aria-label="编辑节点" disabled={readOnly} onClick={()=>{props.editor.tf.select(props.editor.api.start(path));props.editor.tf.focus();}}><PencilIcon/></button>}
     </span>}
   </PlateElement>;
 }
@@ -98,19 +109,53 @@ export function RichEditor({initial,tree=false,inlineRoot=false,outline=null,nat
   const editor=usePlateEditor({plugins,value:tree?toTree(initial):toComment(initial)});
   if(editorRef)editorRef.current=editor;
   const composing=useRef(false),linkSelection=useRef<any>(null),[error,setError]=useState(''),[linkOpen,setLinkOpen]=useState(false),[url,setUrl]=useState('');
+  const [dragView,setDragView]=useState<any>(null);
   const changed=()=>{if(readOnly||composing.current)return;try{onChange?.(tree?fromTree(editor.children):fromComment(editor.children));setError('');}catch(e:any){setError(e.message);}};
+  function moveItem(id:string,from:number[],to:number[]){
+    const selection=editor.selection;
+    const inside=(point:any)=>point&&from.every((v,i)=>point.path[i]===v);
+    const relative=selection&&inside(selection.anchor)&&inside(selection.focus)?{
+      anchor:{...selection.anchor,path:selection.anchor.path.slice(from.length)},
+      focus:{...selection.focus,path:selection.focus.path.slice(from.length)}
+    }:null;
+    // Empty-list normalization and forward moves can shift the destination.
+    // Rebind the selection to the preserved node ID after Slate has moved it.
+    editor.tf.deselect();editor.tf.moveNodes({at:from,to});
+    const moved=[...editor.api.nodes({at:[],match:(n:any)=>n.type==='li'&&n.id===id})][0];
+    if(moved)editor.tf.focus({at:relative?{
+      anchor:{...relative.anchor,path:[...moved[1],...relative.anchor.path]},
+      focus:{...relative.focus,path:[...moved[1],...relative.focus.path]}
+    }:editor.api.start([...moved[1],0])});
+  }
   function dragEnd(event:any){
-    if(!outline||readOnly||!event.over||event.active.id===event.over.id||!mutable(event.active.id))return;
+    setDragView(null);
+    if(readOnly||preview||!event.over||event.active.id===event.over.id||!mutable(event.active.id))return;
     const entries=[...editor.api.nodes({at:[],match:(n:any)=>n.type==='li'})];
     const source=entries.find(([n]:any)=>n.id===event.active.id),target=entries.find(([n]:any)=>n.id===event.over.id);
-    if(!source||!target||target[0].id===outline.documentId)return;
+    if(!source||!target||inlineRoot&&(source[1].length===2||target[1].length===2))return;
     const from=source[1] as number[],to=[...target[1]] as number[];
     if(from.every((v,i)=>to[i]===v))return;
-    const center=event.active.rect.current.translated;
-    const after=center?center.top+center.height/2>event.over.rect.top+event.over.rect.height/2:false;
+    const pointer=event.activatorEvent;
+    const translated=event.active.rect.current.translated;
+    const y=typeof pointer?.clientY==='number'?pointer.clientY+event.delta.y:translated?translated.top+translated.height/2:event.over.rect.top;
+    const after=y>event.over.rect.top+event.over.rect.height/2;
     if(after)to[to.length-1]++;
-    // Slate's moveNodes preserves the complete list-item subtree and selection.
-    editor.tf.moveNodes({at:from,to});editor.tf.focus();
+    moveItem(event.active.id,from,to);
+  }
+  function dragStart(event:any){
+    const entry=[...editor.api.nodes({at:[],match:(n:any)=>n.type==='li'})].find(([n]:any)=>n.id===event.active.id);
+    if(!entry)return;
+    const node=editor.api.toDOMNode(entry[0]) as HTMLElement,clone=node.cloneNode(true) as HTMLElement;
+    // A presentational copy of the existing row/subtree: no second editor,
+    // live controls or duplicate Slate identities inside the public overlay.
+    for(const el of [clone,...clone.querySelectorAll('*')]){
+      for(const attr of [...el.attributes])if(attr.name==='id'||attr.name==='contenteditable'||attr.name.startsWith('data-slate-')||attr.name==='data-collaboration-node'||attr.name==='data-contribution-node')el.removeAttribute(attr.name);
+      if(el instanceof HTMLElement)el.tabIndex=-1;
+    }
+    clone.querySelectorAll('.collaboration-row-actions').forEach(el=>el.remove());
+    clone.dataset.dragging='false';
+    const style=getComputedStyle(node);
+    setDragView({html:clone.outerHTML,width:node.getBoundingClientRect().width,font:style.font,lineHeight:style.lineHeight});
   }
   function keydown(e:React.KeyboardEvent){
     if(readOnly||composing.current||e.nativeEvent.isComposing)return;
@@ -143,7 +188,12 @@ export function RichEditor({initial,tree=false,inlineRoot=false,outline=null,nat
       handled();
       if(inlineRoot&&e.shiftKey&&at.length<=4)return;
       if(outline&&at.length===2)return;
-      if(e.shiftKey)unindentListItems(editor,{enableResetOnShiftTab:false});else indentListItems(editor);
+      if(e.shiftKey&&at.length>2){
+        // List Classic's HTML-list outdent absorbs following siblings. A
+        // RemNote outline lifts only this item/subtree, using public Slate.
+        const parent=at.slice(0,-2),to=[...parent];to[to.length-1]++;
+        moveItem(item.id,at,to);
+      }else if(e.shiftKey)unindentListItems(editor,{enableResetOnShiftTab:false});else indentListItems(editor);
       return;
     }
     if(inlineRoot&&(at.length===2||outline&&item.id===outline.scopeRootId)&&e.key==='Enter'&&!e.shiftKey){handled();appendChild(editor,at);return;}
@@ -165,10 +215,10 @@ export function RichEditor({initial,tree=false,inlineRoot=false,outline=null,nat
     });
     editor.tf.select(ref?.unref()??editor.api.start([]));editor.tf.focus();
   }
-  return <Context.Provider value={{users,onComment,onApprove,owner,readOnly,preview,inlineRoot,titleClasses,comments,outline,mutable,nativeMarkup}}><DndContext sensors={sensors} collisionDetection={collisions} onDragEnd={dragEnd}><Plate editor={editor} readOnly={readOnly} onValueChange={changed}>
+  return <Context.Provider value={{users,onComment,onApprove,owner,readOnly,preview,inlineRoot,titleClasses,comments,outline,mutable,nativeMarkup}}><DndContext sensors={sensors} collisionDetection={collisions} onDragStart={dragStart} onDragEnd={dragEnd} onDragCancel={()=>setDragView(null)}><Plate editor={editor} readOnly={readOnly} onValueChange={changed}>
     <Popover open={linkOpen} onOpenChange={setLinkOpen}><PopoverAnchor asChild><EditorContainer className={tree?'collaboration-outline-editor':'collaboration-comment-editor'} variant="default" data-collaboration-tree={tree?'':undefined}>
       <Editor variant="none" aria-label={label} placeholder={placeholder} onFocus={()=>{if(tree&&!editor.selection)editor.tf.select(editor.api.start([]));}} onKeyDownCapture={keydown} onCompositionStart={()=>{composing.current=true;}} onCompositionEnd={()=>{composing.current=false;queueMicrotask(changed);}} onPaste={e=>{if(e.clipboardData.files.length){e.preventDefault();setError('暂不支持图片或附件');}}}/>
     </EditorContainer></PopoverAnchor><PopoverContent aria-label="插入链接" className="collaboration-link-dialog"><form onSubmit={e=>{e.preventDefault();try{const target=new URL(url);if(!['http:','https:','mailto:'].includes(target.protocol))throw Error('请输入有效链接');if(linkSelection.current)editor.tf.select(linkSelection.current);const text=editor.api.string(editor.selection) || url;editor.tf.insertNodes({type:'a',url,children:[{text}]});setLinkOpen(false);editor.tf.focus();}catch{setError('请输入 http、https 或 mailto 链接');}}}><label>链接地址<input autoFocus required value={url} onChange={e=>setUrl(e.target.value)}/></label><Button type="submit" size="sm">插入</Button></form></PopoverContent></Popover>
     {error&&<p className="collaboration-error" role="status">{error}</p>}
-  </Plate></DndContext></Context.Provider>;
+  </Plate>{createPortal(<DragOverlay dropAnimation={null}>{dragView&&<div className="collaboration-ui reading-outline collaboration-drag-overlay" data-collaboration-drag-overlay="" aria-hidden="true" style={{width:dragView.width,font:dragView.font,lineHeight:dragView.lineHeight}}><ul dangerouslySetInnerHTML={{__html:dragView.html}}/></div>}</DragOverlay>,document.body)}</DndContext></Context.Provider>;
 }
