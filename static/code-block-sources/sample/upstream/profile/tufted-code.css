@@ -1,0 +1,37 @@
+pre {
+	position: relative;
+	background-color: #f7f7f7;
+	border: 1px solid #e0e0e0;
+	border-radius: 5px;
+	padding: 1em;
+	padding-bottom: 0.5em;
+	overflow-x: auto;
+	margin-bottom: 1.5em;
+	width: 55%;
+	margin-left: 0;
+	margin-right: 0;
+	float: none;
+	clear: none;
+	box-sizing: border-box;
+	left: 0;
+}
+
+/* Code within pre */
+pre > code {
+	width: 95%;
+	font-size: 1.2rem;
+	line-height: 1.5;
+	margin-left: 0%;
+	background-color: transparent;
+	padding: 0;
+	padding-bottom: 0.7em;
+	border: none;
+}
+
+code {
+	font-size: 1.2rem;
+	background-color: #f7f7f7;
+	padding: 0.1em 0.3em;
+	border-radius: 3px;
+	border: 1px solid #e7e7e7;
+}

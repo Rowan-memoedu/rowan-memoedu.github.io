@@ -2462,6 +2462,10 @@ body:not( .skin-vector-2022 ) #pt-notifications-notice .mw-echo-notifications-ba
 .collaboration-composer-field [data-slate-editor] { min-height:48px; }
 .collaboration-composer-footer { display:flex; align-items:center; justify-content:flex-end; gap:8px; color:#64748b; font-size:11px; }
 .collaboration-composer-footer > span { margin-right:auto; }
+.collaboration-composer-footer > button { min-width:44px; min-height:44px; flex-shrink:0; }
+.collaboration-notification-history { width:680px; max-width:calc(100vw - 24px); max-height:85vh; margin:auto; padding:0; color:#17212e; background:#f8fafc; border:1px solid #b3c1d2; border-radius:6px; }
+.collaboration-notification-history::backdrop { background:#17212e66; }
+.collaboration-notification-history .collaboration-discussion-header > button { min-width:44px; min-height:44px; }
 .collaboration-comment-editor { width:100%; }
 .collaboration-empty { padding:18px 0; color:#64748b; font-size:13px; }
 .collaboration-link-dialog input { width:100%; border:1px solid #b3c1d2; margin:8px 0; padding:6px; }

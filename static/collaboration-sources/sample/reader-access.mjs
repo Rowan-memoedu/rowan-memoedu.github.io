@@ -16,26 +16,43 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
   const show=node=>{if(!node.open){if(node.showModal)node.showModal();else node.setAttribute('open','');}};
   const close=()=>{hide(dialog);input.value='';};dialog.querySelector('[data-close]').onclick=close;
   errorDialog.querySelector('[data-close]').onclick=()=>hide(errorDialog);
-  const showLogin=()=>{status.textContent='';show(dialog);input.focus();};
+  const showLogin=()=>{if(session.authenticated||['checking','suspended','unavailable'].includes(session.status))return;status.textContent='';show(dialog);input.focus();};
   const button=doc.createElement('button');button.type='button';button.textContent='邀请码登录';
   (doc.querySelector('.site-header-inner')??root.querySelector('.outline-toolbar-tools')??root).append(button);
   let pending=null,lastFocus=null,reading=Promise.resolve();
+  const notices=new WeakMap();
+  function updateAuthUI(){
+    const waiting=['checking','suspended'].includes(session.status);
+    button.disabled=waiting;
+    button.textContent=session.authenticated?'退出登录':waiting?'正在恢复登录…':session.status==='unavailable'?'重试登录验证':'邀请码登录';
+    for(const notice of root.querySelectorAll('.protected-notice')){
+      if(!notices.has(notice))notices.set(notice,notice.innerHTML);
+      if(waiting||session.authenticated||session.status==='unavailable'){
+        notice.textContent=waiting?'正在恢复登录…':session.status==='unavailable'?'登录验证暂不可用，请重试':session.user?.role==='reader'?'当前账号无权查看此页面':'正在加载已授权内容…';
+      }else notice.innerHTML=notices.get(notice);
+    }
+  }
   const report=error=>{
     if(error.name==='AbortError')return;
     if(error.status===401){if(pending)showLogin();return;}
     errorDialog.querySelector('[role=status]').textContent=error.message;show(errorDialog);
   };
-  const load=()=>{reading=delivery.load().then(result=>{if(result)hide(errorDialog);return result;}).catch(report);return reading;};
+  const load=()=>{updateAuthUI();reading=delivery.load().then(result=>{if(result)hide(errorDialog);return result;}).catch(report);return reading;};
   errorDialog.querySelector('[data-retry]').onclick=async()=>{hide(errorDialog);if(session.status==='unavailable')await session.restore();await load();};
   session.subscribe(()=>{
     delivery.clear();hide(errorDialog);
-    button.textContent=session.authenticated?'退出登录':session.status==='unavailable'?'重试登录验证':'邀请码登录';
+    updateAuthUI();close();
+    if(session.authenticated)void load();
     win.dispatchEvent(new win.CustomEvent('personal-session-changed'));
-    if(session.authenticated){close();void load();}
   });
+  updateAuthUI();
   const ready=async()=>{await session.ready;await reading;await delivery.ready;};
   async function open(id){
-    await ready();const target='node-'+id;
+    const generation=session.epoch;await ready();if(session.status==='suspended')return false;
+    // Restoration may legitimately advance the epoch, but an explicit logout
+    // during a pending navigation must never open a new invitation dialog.
+    if(generation!==session.epoch&&!session.authenticated)return false;
+    const target='node-'+id;
     if(content.available(target))return true;
     const node=doc.getElementById(target);
     if(!node&&!/^r-(?:[a-f0-9]{2}){1,256}$/u.test(id))return false;
@@ -55,6 +72,7 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
   button.onclick=async()=>{await session.ready;if(session.status==='unavailable'){await session.restore();return;}if(!session.authenticated)showLogin();else await session.logout();};
   root.addEventListener('click',event=>{const button=event.target.closest('[data-protected-open]');if(button){event.preventDefault();void open(button.dataset.protectedOpen);}});
   const focused=()=>{
+    if(session.status==='suspended')return;
     const id=win.location.hash.slice(1)||root.dataset.documentTitleSource;
     if(id!==lastFocus){lastFocus=id;pending=null;close();if(id)void open(id.replace(/^node-/u,''));}
   };

@@ -2,11 +2,11 @@
  * No mock discussion store or browser persistence. See upstream manifests. */
 import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {MessageSquareTextIcon,PlusIcon,PencilIcon,ArrowUpIcon,BellIcon,CheckIcon,XIcon} from 'lucide-react';
+import {MessageSquareTextIcon,PlusIcon,PencilIcon,ArrowUpIcon,AtSignIcon,BellIcon,CheckIcon,XIcon} from 'lucide-react';
 import {Button} from '../upstream/collaboration/plate/components/ui/button';
 import {Avatar,AvatarFallback} from '../upstream/collaboration/plate/components/ui/avatar';
 import {Popover,PopoverContent,PopoverTrigger} from './popover';
-import {RichEditor} from './editor';
+import {RichEditor,openMentionPicker} from './editor';
 import {Autosave,textOf} from './model.mjs';
 const date=value=>new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(value*1000));
 const blank=[{text:''}];
@@ -14,7 +14,7 @@ const statusText={saved:'已保存',unsaved:'未保存',saving:'正在保存…'
 
 function Composer({api,anchorId,thread,proposalId,proposalNodeId,replyTo,onSent,onCancel}:any){
   const [runs,setRuns]=useState(blank),[users,setUsers]=useState([]),[busy,setBusy]=useState(false),[error,setError]=useState(''),[key,setKey]=useState(0);
-  const pending=useRef<any>(null);
+  const pending=useRef<any>(null),editor=useRef<any>(null);
   useEffect(()=>{let alive=true;api.users({anchorId,threadId:thread?.id,proposalId}).then((x:any)=>{if(alive)setUsers(x.users);}).catch((e:any)=>{if(alive)setError(e.message);});return()=>{alive=false;};},[thread?.id,proposalId,anchorId]);
   async function submit(){
     setBusy(true);setError('');
@@ -27,8 +27,8 @@ function Composer({api,anchorId,thread,proposalId,proposalNodeId,replyTo,onSent,
     }catch(e:any){setError(e.message);}finally{setBusy(false);}
   }
   return <div className="collaboration-composer"><Avatar className="size-6"><AvatarFallback>{api.user.name[0]}</AvatarFallback></Avatar>
-    <div className="collaboration-composer-field"><RichEditor key={key} initial={blank} users={users} onChange={setRuns} readOnly={busy} onSubmit={()=>{if(!busy&&textOf(runs).trim())void submit();}} label={thread?'回复编辑器':'批注编辑器'} placeholder={thread?'回复，@ 提及对方…':'写下批注，@ 提及对方…'}/>
-      <div className="collaboration-composer-footer"><span>Ctrl + Enter 发送</span>{onCancel&&<button type="button" onClick={onCancel}>取消</button>}<Button variant="ghost" size="icon-xs" aria-label="发送批注或回复" disabled={busy||!textOf(runs).trim()} onClick={()=>void submit()}><ArrowUpIcon className="size-4"/></Button></div>
+    <div className="collaboration-composer-field"><RichEditor key={key} initial={blank} users={users} editorRef={editor} onChange={setRuns} readOnly={busy} onSubmit={()=>{if(!busy&&textOf(runs).trim())void submit();}} label={thread?'回复编辑器':'批注编辑器'} placeholder={thread?'回复，@ 提及对方…':'写下批注，@ 提及对方…'}/>
+      <div className="collaboration-composer-footer"><span>Ctrl + Enter 发送</span>{onCancel&&<button type="button" onClick={onCancel}>取消</button>}<Button variant="ghost" size="icon-xs" aria-label="选择要提及的用户" title="@ 提及用户" disabled={busy||!users.length} onMouseDown={e=>e.preventDefault()} onClick={()=>openMentionPicker(editor.current)}><AtSignIcon className="size-4"/></Button><Button variant="ghost" size="icon-xs" aria-label="发送批注或回复" disabled={busy||!textOf(runs).trim()} onClick={()=>void submit()}><ArrowUpIcon className="size-4"/></Button></div>
       {error&&<p role="status" className="collaboration-error">{error}</p>}</div></div>;
 }
 function Message({message,thread,onReply,onDelete,highlight,children,composer}:any){
@@ -118,21 +118,35 @@ function Proposal({api,proposal,anchorId,data,refresh,onAccepted,registerSave,no
 function Projection({nodes}:any){return <RichEditor initial={nodes} tree preview readOnly label="正式正文预览编辑器"/>;}
 export function ProposalGroup(props:any){return <>{props.data.proposals.filter((p:any)=>p.kind!=='edit'||props.edit).filter((p:any)=>!props.edit||p.kind==='edit').map((p:any)=><Proposal key={p.id} {...props} proposal={p}/>)}</>;}
 
-export function Bell({inbox,onOpen,onJump,onMore,error}:any){
-  const [open,setOpen]=useState(false),[jumpError,setJumpError]=useState('');
-  const verbs:any={mention:'在内容中提及了你',reply:'回复了你',comment:'添加了批注',read:'已读你的消息'};
-  return <Popover open={open} onOpenChange={value=>{setOpen(value);if(value)onOpen();}}><span id="pt-notifications-notice"><PopoverTrigger asChild>
-    <button type="button" className={'mw-echo-notifications-badge '+(inbox.unreadCount?'mw-echo-unseen-notifications':'mw-echo-notifications-badge-all-read')} data-counter-text={inbox.unreadCount>99?'99+':inbox.unreadCount} aria-label={`消息提醒，${inbox.unreadCount} 条未读`}><BellIcon className="collaboration-bell-icon"/>消息提醒</button>
-  </PopoverTrigger></span><PopoverContent className="w-[420px] max-w-[calc(100vw-24px)] p-0" align="end" aria-label="消息提醒列表"><div className="p-4 font-semibold">消息提醒</div>
-    {(error||jumpError)&&<p className="p-4 text-sm text-destructive" role="status">{error||jumpError}</p>}
-    <div className="mw-echo-ui-notificationsListWidget max-h-[65vh] overflow-y-auto">
+function NotificationList({inbox,onJump,onMore}:any){
+  const verbs:any={mention:'在内容中提及了你',reply:'回复了你',comment:'添加了批注',read:'已读你的消息',accepted:'采纳了你添加的节点'};
+  return <div className="mw-echo-ui-notificationsListWidget max-h-[65vh] overflow-y-auto">
       {!inbox.items.length&&<p className="p-4 text-sm">暂无消息</p>}
-      {inbox.items.map((n:any)=><a key={n.id} href={'/blog/#node-'+n.anchorId} className={'mw-echo-ui-notificationItemWidget '+(n.unread?'mw-echo-ui-notificationItemWidget-unread':'')} data-notification-id={n.id} onClick={async e=>{e.preventDefault();try{await onJump(n);setOpen(false);setJumpError('');}catch(err:any){setJumpError(err.message);}}}>
+      {inbox.items.map((n:any)=><a key={n.id} href={'/blog/#node-'+n.anchorId} className={'mw-echo-ui-notificationItemWidget '+(n.unread?'mw-echo-ui-notificationItemWidget-unread':'')} data-notification-id={n.id} onClick={e=>{e.preventDefault();void onJump(n);}}>
         <span className="mw-echo-ui-notificationItemWidget-icon">{n.reasons.includes('read')?<CheckIcon className="size-5"/>:<MessageSquareTextIcon className="size-5"/>}</span>
         <span className="mw-echo-ui-notificationItemWidget-content"><span className="mw-echo-ui-notificationItemWidget-content-message"><span className="mw-echo-ui-notificationItemWidget-content-message-header"><b>{n.actorName}</b> {verbs[n.reasons.includes('reply')?'reply':n.reasons.includes('mention')?'mention':n.reasons[0]]}{n.superseded?'（已回复）':''}</span><span className="mw-echo-ui-notificationItemWidget-content-message-body block">{n.summary}</span></span><span className="mw-echo-ui-notificationItemWidget-content-actions"><time className="mw-echo-ui-notificationItemWidget-content-actions-timestamp">{date(n.createdAt)}</time></span></span>
       </a>)}
       {inbox.nextOffset!==null&&<Button className="w-full" variant="ghost" onClick={onMore}>更早的消息</Button>}
-    </div></PopoverContent></Popover>;
+    </div>;
+}
+export function Bell({inbox,onOpen,onJump,onMore,error}:any){
+  const [preview,setPreview]=useState(false),[history,setHistory]=useState(false),[jumpError,setJumpError]=useState('');
+  const dialog=useRef<HTMLDialogElement>(null),leave=useRef<any>(null);
+  const close=()=>{dialog.current?.close();setHistory(false);setPreview(false);};
+  const enter=()=>{clearTimeout(leave.current);if(!history){setPreview(true);onOpen();}};
+  const exit=()=>{clearTimeout(leave.current);leave.current=setTimeout(()=>setPreview(false),180);};
+  useEffect(()=>{if(history){dialog.current?.showModal();onOpen();}else dialog.current?.close();},[history]);
+  useEffect(()=>()=>{clearTimeout(leave.current);dialog.current?.close();},[]);
+  async function jump(n:any){close();try{await onJump(n);setJumpError('');}catch(err:any){setJumpError(err.message);setHistory(true);}}
+  const list=<NotificationList inbox={inbox} onJump={jump} onMore={onMore}/>;
+  const message=(error||jumpError)&&<p className="p-4 text-sm text-destructive" role="status">{error||jumpError}</p>;
+  return <><Popover open={preview&&!history} onOpenChange={setPreview}><span id="pt-notifications-notice" onMouseEnter={enter} onMouseLeave={exit}><PopoverTrigger asChild>
+    <button type="button" className={'mw-echo-notifications-badge '+(inbox.unreadCount?'mw-echo-unseen-notifications':'mw-echo-notifications-badge-all-read')} data-counter-text={inbox.unreadCount>99?'99+':inbox.unreadCount} aria-label={`消息提醒，${inbox.unreadCount} 条未读`} title="点击查看历史消息记录" onFocus={enter} onClick={e=>{e.preventDefault();clearTimeout(leave.current);setPreview(false);setHistory(true);}}><BellIcon className="collaboration-bell-icon"/>消息提醒</button>
+  </PopoverTrigger></span><PopoverContent className="w-[420px] max-w-[calc(100vw-24px)] p-0" align="end" aria-label="消息提醒列表" onMouseEnter={()=>clearTimeout(leave.current)} onMouseLeave={exit} onOpenAutoFocus={e=>e.preventDefault()} onCloseAutoFocus={e=>e.preventDefault()}>
+    <div className="p-4 font-semibold">消息提醒</div>{message}{preview&&list}
+  </PopoverContent></Popover><dialog ref={dialog} className="collaboration-ui collaboration-notification-history" aria-label="历史消息记录" onCancel={()=>setHistory(false)} onClose={()=>setHistory(false)}>
+    <header className="collaboration-discussion-header"><strong>历史消息记录</strong><Button variant="ghost" size="icon-xs" aria-label="关闭历史消息记录" onClick={close}><XIcon/></Button></header>{message}{history&&list}
+  </dialog></>;
 }
 export function mount(host:HTMLElement,Component:any,props:any){const root=createRoot(host);root.render(<Component {...props}/>);return {update:(next:any)=>root.render(<Component {...next}/>),dispose:()=>root.unmount()};}
 export function update(root:any,Component:any,props:any){root.update(props);}

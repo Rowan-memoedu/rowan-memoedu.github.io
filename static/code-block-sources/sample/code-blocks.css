@@ -1,0 +1,24 @@
+/* Hallmark · component: code-copy · genre: editorial · theme: existing Tufted
+ * states: default · hover · focus · active · disabled · loading · error · success
+ * pre-emit critique: P5 H4 E4 S5 R5 V3
+ * Gray frame: pinned Tufted pre; clipboard button: Quartz 0.1.0 (MIT).
+ */
+.reading-outline {
+  --code-frame-background:#f7f7f7;--code-frame-border:#e0e0e0;--code-button-background:#fff;
+  --code-button-text:#525252;--code-button-focus:#0645ad;--code-button-hover:#eee;
+  --code-button-error:#b42318;--code-button-success:#14552a;
+}
+.reading-outline pre {position:relative;max-width:100%;box-sizing:border-box;background:var(--code-frame-background);border:1px solid var(--code-frame-border);border-radius:5px;padding:3rem 1em 1em;overflow-x:auto;line-height:1.5;}
+.reading-outline pre > code {display:block;width:auto;max-width:none;white-space:pre;word-break:normal;overflow-wrap:normal;background:transparent;border:0;padding:0;}
+.reading-outline pre > .code-copy {position:absolute;display:inline-flex;align-items:center;gap:.35em;right:.4rem;top:.4rem;margin:0;padding:.35rem .5rem;min-height:30px;border:1px solid var(--code-frame-border);border-radius:5px;background:var(--code-button-background);color:var(--code-button-text);font:inherit;font-size:13px;line-height:1.2;white-space:nowrap;cursor:pointer;user-select:none;}
+.code-copy svg {fill:currentColor;flex-shrink:0;}
+.reading-outline pre > .code-copy:hover,.reading-outline pre > .code-copy.is-hover {background:var(--code-button-hover);border-color:var(--code-button-focus);}
+.reading-outline pre > .code-copy:focus-visible,.reading-outline pre > .code-copy.is-focus {outline:2px solid var(--code-button-focus);outline-offset:2px;}
+.reading-outline pre > .code-copy:active,.reading-outline pre > .code-copy.is-active {background:var(--code-button-hover);border-color:var(--code-button-text);}
+.reading-outline pre > .code-copy:disabled {opacity:.65;cursor:default;}
+.reading-outline pre > .code-copy[data-state="loading"] {cursor:progress;}
+.reading-outline pre > .code-copy[data-state="error"] {color:var(--code-button-error);border-color:var(--code-button-error);}
+.reading-outline pre > .code-copy[data-state="success"] {color:var(--code-button-success);border-color:var(--code-button-success);}
+.code-copy-status {position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
+.code-copy-fallback {position:fixed;left:-10000px;top:0;width:1px;height:1px;}
+@media(max-width:600px){.reading-outline pre {padding:3rem .7rem .7rem;}}

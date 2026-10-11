@@ -10,9 +10,9 @@ export function createInvitationSession({window:win=window,apiBase,fetcher=fetch
   const forget=()=>{try{win.localStorage.removeItem(storageKey);}catch{/* Storage may be disabled. */}};
   const persist=()=>{try{win.localStorage.setItem(storageKey,JSON.stringify({token,expiresAt}));}catch{/* Fall back to memory when browser storage is disabled. */}};
   const emit=()=>{for(const listener of listeners)listener();};
-  function clear({forgetSession=true}={}){
+  function clear({forgetSession=true,suspended=false}={}){
     epoch++;for(const controller of controllers)controller.abort();controllers.clear();
-    token='';user=null;expiresAt=0;status='anonymous';restoring=null;win.clearTimeout(timer);timer=null;
+    token='';user=null;expiresAt=0;status=suspended?'suspended':'anonymous';restoring=null;win.clearTimeout(timer);timer=null;
     if(forgetSession)forget();emit();
   }
   function activate(value){
@@ -66,7 +66,7 @@ export function createInvitationSession({window:win=window,apiBase,fetcher=fetch
   }
   async function logout(){const previous=token;clear();if(previous)try{await send('/logout',{method:'POST'},previous);}catch{/* Local state has already been removed. */}}
   const storage=event=>{if(event.key!==storageKey&&event.key!==null)return;clear({forgetSession:false});restoring=null;void restore();};
-  const pagehide=()=>clear({forgetSession:false});
+  const pagehide=()=>clear({forgetSession:false,suspended:true});
   const pageshow=event=>{if(event.persisted)void restore();};
   win.addEventListener('storage',storage);win.addEventListener('pagehide',pagehide);win.addEventListener('pageshow',pageshow);
   if(read())void restore();

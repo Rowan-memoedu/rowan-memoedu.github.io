@@ -30,7 +30,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
   async function flushAll(){for(const save of savers)if(!await save())return false;return true;}
   function renderBell(){
     if(!bell||!api)return;
-    bell.update({inbox,error:noticeError,onOpen:()=>void poll(),onJump:jump,onMore:async()=>{
+    bell.update({inbox,error:noticeError,onOpen:()=>poll(),onJump:jump,onMore:async()=>{
       try{const next=await api.get('inbox?offset='+inbox.nextOffset);const unique=new Map([...inbox.items,...next.items].map(n=>[n.id,n]));inbox={...next,items:[...unique.values()]};renderBell();}catch(e){noticeError=e.message;renderBell();}
     }});
   }
@@ -132,7 +132,18 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
       const [state,list,counts]=await Promise.all([api.get('session'),api.get('inbox'),api.get('index')]);
       if(generation!==epoch)return;
       user=state;api.user=state;
-      if(list.version>=inbox.version)inbox=list;
+      if(list.version>=inbox.version) {
+        // Revalidate every loaded history page when the inbox changes; never
+        // retain stale rows whose document permissions may have been revoked.
+        const depth=inbox.items.length;
+        let next=list;
+        while(next.nextOffset!==null&&next.items.length<depth){
+          const page=await api.get('inbox?offset='+next.nextOffset);
+          if(generation!==epoch)return;
+          next={...page,items:[...next.items,...page.items]};
+        }
+        inbox=next;
+      }
       index=counts.entries;noticeError='';renderBell();scan();
       for(const a of anchors.values())if(a.data&&visible(a.node))void load(a).catch(()=>{});
       if(doc.querySelector('[data-recent-changes]'))await recentChanges();
@@ -140,12 +151,21 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
   }
   async function jump(notice){
     await session.ready;
+    if(!api||!session.authenticated)throw cancelled();
+    const generation=epoch,authentication=session.epoch;
+    await session.open?.(notice.anchorId);
+    if(generation!==epoch||authentication!==session.epoch)throw cancelled();
     let target=doc.getElementById('node-'+notice.anchorId);
     if(!target){
       // A different full-page document restores and validates the remembered session.
       win.location.href='/blog/?notification='+encodeURIComponent(notice.id)+'#node-'+notice.documentId;return;
     }
-    win.location.hash='node-'+notice.anchorId;scan();
+    win.location.hash='node-'+notice.anchorId;
+    // Outline navigation runs on hashchange. Let it reveal the ordinary
+    // ancestors before mounting actions, without expanding unrelated branches.
+    await delay(0);await session.ready;
+    if(generation!==epoch||authentication!==session.epoch)throw cancelled();
+    scan();
     const a=anchors.get(notice.anchorId);if(!a)throw Error('请先进入并加载该文档');
     a.target=notice;await load(a);
     const insideProposal=notice.proposalId&&a.data.proposals.some(p=>p.id===notice.proposalId);
@@ -153,10 +173,13 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     render(a);
     const wanted=notice.sourceId.startsWith('node:')?notice.sourceId.split(':').at(-1):null;
     for(let attempt=0;attempt<40;attempt++){
+      if(generation!==epoch||authentication!==session.epoch)throw cancelled();
       const element=notice.targetNodeId?doc.getElementById('node-'+notice.targetNodeId):wanted?[...doc.querySelectorAll('[data-contribution-node]')].find(el=>el.dataset.contributionNode===wanted):doc.getElementById('collab-'+notice.sourceId);
       if(element&&visible(element)){
         element.scrollIntoView({block:'center'});element.setAttribute('tabindex','-1');element.focus({preventScroll:true});element.dataset.highlight='true';
-        await api.post('inbox/read',{notificationId:notice.id});void poll();return;
+        const read=await api.post('inbox/read',{notificationId:notice.id});
+        if(read.deletedMessageId)await load(a,true);
+        void poll();return;
       }
       await delay(50);
     }
@@ -182,10 +205,11 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     if(!session.authenticated){clear();return;}
     clear();const generation=epoch;
     try{
+      await session.ready;if(generation!==epoch||!session.authenticated)return;
       uiPromise??=loadUI().catch(error=>{uiPromise=null;throw error;});UI??=await uiPromise;if(generation!==epoch)return;
       user=await request('session');api={user,get:route=>request(route),post:request,users:context=>request('mentions?'+new URLSearchParams(Object.entries(context).filter(([,v])=>v!==undefined)))};
       bellHost=doc.createElement('span');bellHost.className='collaboration-ui';(doc.querySelector('.site-header-inner')??doc.body).append(bellHost);
-      bell=UI.mount(bellHost,UI.Bell,{inbox,onOpen:()=>void poll(),onJump:jump,onMore:()=>{}});
+      bell=UI.mount(bellHost,UI.Bell,{inbox,onOpen:()=>poll(),onJump:jump,onMore:()=>{}});
       observer=new win.MutationObserver(records=>{if(sourceChanged(records))scheduleScan();});const root=doc.querySelector('.reading-outline');if(root)observer.observe(root,{childList:true,subtree:true});
       scan();await poll();if(generation!==epoch)return;
       timer=win.setInterval(()=>{if(doc.visibilityState!=='hidden')void poll();},15000);

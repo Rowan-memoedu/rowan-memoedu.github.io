@@ -23,6 +23,13 @@ import {toTree,fromTree,toComment,fromComment,fromInline,textOf} from './model.m
 const Context=createContext<any>({users:[],readOnly:false});
 const selectMention=getMentionOnSelectItem();
 const uid=()=>crypto.randomUUID();
+// Open the same Plate mention input used by typing @, retaining the caret.
+export function openMentionPicker(editor:any){
+  if(!editor)return;
+  if(!editor.selection)editor.tf.select(editor.api.end([]));
+  editor.tf.insertNodes({type:editor.getType(MentionInputPlugin),trigger:'@',children:[{text:''}]});
+  editor.tf.focus();
+}
 function appendChild(editor:any,itemPath:number[]){
   const parent=editor.api.node(itemPath)?.[0];if(!parent)return;
   const index=parent.children.findIndex((n:any)=>n.type==='ul'||n.type==='ol');
