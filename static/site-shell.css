@@ -432,3 +432,17 @@ SOFTWARE.
 	border: none;
  }
 @media (prefers-reduced-motion: reduce) { .site-header .site-navigation a:any-link { transition: none; } }
+
+
+:root {
+  --site-link-blue: #0645ad;
+  --site-link-blue-on-dark: #86bfff;
+  --site-link-color: var(--site-link-blue);
+}
+/* This explicit site-wide policy overrides pinned theme/state link colors.
+   Callout surfaces select a readable blue without changing their own palette. */
+a:any-link { color: var(--site-link-color) !important; }
+a:any-link :where(span,strong,em,b,i,u,s,code) { color: inherit !important; }
+a:any-link mark { color: var(--site-link-blue) !important; }
+.collaboration-discussion, .collaboration-discussion-popover,
+.mw-echo-ui-notificationItemWidget { --site-link-color: var(--site-link-blue); }

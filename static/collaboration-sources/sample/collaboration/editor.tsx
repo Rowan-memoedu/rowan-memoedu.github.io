@@ -27,8 +27,9 @@ const uid=()=>crypto.randomUUID();
 export function openMentionPicker(editor:any){
   if(!editor)return;
   if(!editor.selection)editor.tf.select(editor.api.end([]));
-  editor.tf.insertNodes({type:editor.getType(MentionInputPlugin),trigger:'@',children:[{text:''}]});
-  editor.tf.focus();
+  editor.tf.insertNodes({type:editor.getType(MentionInputPlugin.key),trigger:'@',children:[{text:''}]});
+  // The upstream input takes focus when it mounts. Focusing the old editor
+  // here would restore its previous DOM selection and dismiss the new input.
 }
 function appendChild(editor:any,itemPath:number[]){
   const parent=editor.api.node(itemPath)?.[0];if(!parent)return;
