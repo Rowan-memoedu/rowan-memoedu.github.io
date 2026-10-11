@@ -24,7 +24,7 @@
     "private:user": "node scripts/private-users.mjs",
     "test:privacy": "node scripts/privacy-canary.mjs",
     "test:privacy:live": "node scripts/verify-private-live.mjs",
-    "test:collaboration:browser": "node scripts/collaboration-browser.mjs",
+    "test:collaboration:browser": "node scripts/collaboration-outline-browser.mjs && node scripts/collaboration-browser.mjs && node scripts/collaboration-sync-browser.mjs",
     "collaboration:worker": "node scripts/collaboration-worker.mjs",
     "collaboration:worker:install": "pwsh -NoLogo -NoProfile -File scripts/install-collaboration-worker.ps1",
     "deploy": "node scripts/publish-pages.mjs",
