@@ -55,13 +55,14 @@ const personalPrepareSearchPreview=function prepareSearchPreview(container,conte
     if(!phrase){hits=[...preview.querySelectorAll('.highlight')].filter(hit=>!hit.closest(excluded)).map(hit=>[hit]);return;}
     const terms=[phrase,...phrase.split(/\s+/u)];
     const pattern=[...new Set(terms)].sort((a,b)=>b.length-a.length).map(term=>term.replace(/[.*+?^${}()|[\]\\]/gu,'\\$&').replace(/\s+/gu,'\\s+')).join('|');
-    const candidates=[...preview.querySelectorAll('.node-content,p,td,th,h1,h2,h3,h4,h5,h6,pre')];
-    const blocks=candidates.filter(block=>!block.closest(excluded)&&!candidates.some(parent=>parent!==block&&parent.contains(block)));
+    const selector='.node-content,p,td,th,h1,h2,h3,h4,h5,h6,pre';
+    const candidates=[...preview.querySelectorAll(selector)],candidateSet=new Set(candidates);
+    const blocks=candidates.filter(block=>!block.closest(excluded)&&!candidateSet.has(block.parentElement.closest(selector)));
     const edits=new Map();
     for(const block of blocks){
       const walker=doc.createTreeWalker(block,win.NodeFilter.SHOW_TEXT,{acceptNode:text=>text.parentElement.closest(excluded)?win.NodeFilter.FILTER_REJECT:win.NodeFilter.FILTER_ACCEPT});
       const segments=[];let text,value='';
-      while((text=walker.nextNode())){segments.push({text,start:value.length,end:value.length+text.nodeValue.length});value+=text.nodeValue;}
+      while((text=walker.nextNode()))if(text.nodeValue){segments.push({text,start:value.length,end:value.length+text.nodeValue.length});value+=text.nodeValue;}
       const regex=new RegExp(pattern,'giu');let match,cursor=0;
       while((match=regex.exec(value))){
         const group=[],end=match.index+match[0].length,occurrence=hits.length;hits.push(group);
