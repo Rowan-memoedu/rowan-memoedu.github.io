@@ -21,6 +21,7 @@ export function attachSearchPreview(reader,{window:win=window}={}){
       link.href='/blog/'+(context.slug==='index'?'':context.slug)+'#'+node.id;link.textContent='打开页面';button.replaceWith(link);
     }
     cleanIds(view);container.replaceChildren(...view.childNodes);
+    win.dispatchEvent(new win.CustomEvent('personal-code-blocks-changed',{detail:{container}}));
   }
   async function render(container,context){
     if(!originals.has(container))originals.set(container,container.cloneNode(true));
