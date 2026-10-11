@@ -44,7 +44,7 @@ export async function buildCollaboration(outputDirectory){
   ].join('\n'),{javascriptEnabled:false});
   const style=path.join(outputDirectory,'collaboration.css');fs.writeFileSync(style,css.toString()+'\n'+tokens+'\n'+echoCss.css+'\n'+read('sample/collaboration/compatibility.css'));
   const licenses=path.join(outputDirectory,'collaboration-licenses.txt');
-  fs.writeFileSync(licenses,['Plate registry','MIT',read(path.join(plate,'LICENSE')),'MediaWiki Echo',read(path.join(root,'echo/COPYING')),'KaTeX',read('node_modules/katex-collaboration/LICENSE')].join('\n'));
+  fs.writeFileSync(licenses,['Plate registry','MIT',read(path.join(plate,'LICENSE')),'dnd-kit core 6.3.1 (https://github.com/clauderic/dnd-kit)',read('node_modules/@dnd-kit/core/LICENSE'),'MediaWiki Echo',read(path.join(root,'echo/COPYING')),'KaTeX',read('node_modules/katex-collaboration/LICENSE')].join('\n'));
   return {outputs:[...Object.keys(result.metafile.outputs),style,licenses],metafile:result.metafile};
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===path.resolve(new URL(import.meta.url).pathname.replace(/^\/(?:([A-Z]:))/u,'$1'))){await buildCollaboration(path.resolve(process.argv[2]??'D:/Artifacts/PersonalWebsite/collaboration-development-20261007/browser/static'));}

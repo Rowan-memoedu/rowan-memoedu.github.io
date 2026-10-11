@@ -11,9 +11,13 @@
 .reading-outline .collaboration-outline-editor > [data-slate-editor] > ul { padding-left:0; }
 .reading-outline [data-collaboration-editing="true"] > .node-content,
 .reading-outline [data-collaboration-editing="true"] > .outline-controls { display:none !important; }
+.reading-outline .focus-ancestor > .collaboration-edit-host[data-document-context] { display:block !important; }
+.reading-outline [data-collaboration-context] > :is(ul,.document-body) { display:none !important; }
 .collaboration-ui { --collaboration-edit-color:#c62828; }
+.reading-outline .collaboration-outline-node > .outline-controls .node-focus { position:relative; color:transparent; }
+.reading-outline .collaboration-outline-node > .outline-controls .node-focus::before { content:""; position:absolute; left:50%; top:50%; width:.78em; height:.78em; border-radius:50%; transform:translate(-50%,-50%); pointer-events:none; }
 .reading-outline .collaboration-outline-node[data-editable="true"] > .outline-controls .node-focus::before { background:var(--collaboration-edit-color); }
-.reading-outline .collaboration-outline-node[data-editable="false"] > .outline-controls .node-focus::before { background:currentColor; }
+.reading-outline .collaboration-outline-node[data-editable="false"] > .outline-controls .node-focus::before { background:#315a88; }
 .reading-outline .collaboration-outline-node[data-dragging="true"] { opacity:.5; }
 .reading-outline .collaboration-outline-node > .node-content[data-drop-target="true"] { outline:2px solid var(--collaboration-edit-color); outline-offset:2px; }
 .reading-outline .collaboration-outline-node[data-editable="true"] > .outline-controls .node-focus { touch-action:none; cursor:grab; }

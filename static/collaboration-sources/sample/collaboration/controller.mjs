@@ -8,7 +8,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
   const localUpdates=createLocalUpdates(win);
   let UI=null,uiPromise=null,api=null,user=null,timer=null,epoch=0,observer=null,refreshing=null,startError=null,scanQueued=null;
   let inbox={items:[],unreadCount:0,version:0,nextOffset:null},index={},noticeError='',bell=null,bellHost=null;
-  const anchors=new Map(),savers=new Set(),restored=new Set();
+  const anchors=new Map(),savers=new Set(),restored=new Set(),nativeViews=new Map();
   const cancelled=()=>Object.assign(Error('登录状态已改变'),{name:'AbortError'});
   function clear(){
     epoch++;scanQueued=null;user=null;api=null;win.clearInterval(timer);timer=null;observer?.disconnect();observer=null;refreshing=null;
@@ -35,7 +35,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     }});
   }
   function actionProps(a){return {api,anchorId:a.id,entry:index[a.id],data:a.data,canEdit:a.data?.canEdit??a.canEdit,onEdit:()=>add(a,'outline'),onOpen:()=>load(a),refresh:()=>load(a,true),openKey:a.openKey,highlight:a.target?.sourceId};}
-  function groupProps(a){return {api,anchorId:a.id,data:a.data,refresh:()=>load(a,true),onAccepted:proposal=>restore(a,proposal),registerSave,notificationTarget:a.target,nativeMarkup:a.nativeMarkup,titleClasses:[...((a.editNode??a.node).querySelector(':scope > .node-content')?.classList??[])].filter(c=>c.startsWith('document-title')).join(' ')};}
+  function groupProps(a){return {api,anchorId:a.id,data:a.data,commentCounts:index,refresh:()=>load(a,true),onAccepted:proposal=>restore(a,proposal),registerSave,notificationTarget:a.target,nativeMarkup:a.nativeMarkup,titleClasses:[...((a.editNode??a.node).querySelector(':scope > .node-content')?.classList??[])].filter(c=>c.startsWith('document-title')).join(' ')};}
   function render(a){
     if(!a.node.isConnected)return;
     if(a.data?.proposals.some(p=>p.status==='adopting')&&doc.visibilityState!=='hidden'){
@@ -63,14 +63,17 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
         }
         const content=a.editNode.querySelector(':scope > .node-content');
         a.editNode.dataset.collaborationEditing='true';
-        a.native=[content,a.editNode.querySelector(':scope > .outline-controls'),...(outline?[...a.editNode.children].filter(el=>el.matches('ul,.document-body')):[])].filter(Boolean).map(el=>({el,hidden:el.hidden}));
-        a.native.forEach(({el})=>{el.hidden=true;});
+        let view=nativeViews.get(a.editNode);
+        if(!view){view={users:new Set(),native:[content,a.editNode.querySelector(':scope > .outline-controls'),...(outline?[...a.editNode.children].filter(el=>el.matches('ul,.document-body')):[])].filter(Boolean).map(el=>({el,hidden:el.hidden}))};nativeViews.set(a.editNode,view);}
+        view.users.add(a);a.nativeView=view;view.native.forEach(({el})=>{el.hidden=true;});
+        if(outline)a.editNode.dataset.collaborationContext=outline.documentId;
         const host=doc.createElement('div');host.className='collaboration-ui collaboration-edit-host';host.dataset.collaborationPrivate='';
+        if(outline)host.dataset.documentContext=outline.documentId;
         content.before(host);a.editHost=host;a.editGroup=UI.mount(host,UI.ProposalGroup,{...groupProps(a),edit:true});
       }else a.editGroup.update({...groupProps(a),edit:true});
     }else if(a.editGroup){a.editGroup.dispose();a.editHost.remove();a.editGroup=null;a.editHost=null;restoreNative(a);}
   }
-  function restoreNative(a){a.native?.forEach(({el,hidden})=>{el.hidden=hidden;});a.native=null;delete (a.editNode??a.node).dataset.collaborationEditing;a.editNode=null;}
+  function restoreNative(a){const node=a.editNode??a.node,view=a.nativeView;if(view){view.users.delete(a);if(!view.users.size){view.native.forEach(({el,hidden})=>{el.hidden=hidden;});nativeViews.delete(node);delete node.dataset.collaborationEditing;delete node.dataset.collaborationContext;}}a.nativeView=null;a.editNode=null;}
   function cleanContainer(a){const container=a.node.querySelector(':scope > [data-collaboration-container]');if(container&&!container.children.length){container.remove();win.dispatchEvent(new win.CustomEvent('personal-outline-changed',{detail:{nodeIds:[a.node.id]}}));}}
   async function load(a,refresh=false){
     if(a.loading){await a.loading;if(!refresh)return a.data;}
@@ -85,8 +88,8 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
   }
   async function add(a,mode='outline'){
     await api.post('proposals',{requestId:crypto.randomUUID(),anchorId:a.id,mode});await load(a,true);
-    // Wait for React to commit before moving focus to the empty new child.
-    for(let i=0;i<20;i++){const fields=a.editHost?.querySelectorAll('[contenteditable=true]');if(fields?.length){fields[fields.length-1].focus();break;}await delay(40);}
+    // Focus the selected source row after React commits the document context.
+    for(let i=0;i<20;i++){const focus=a.editHost?.querySelector('[data-collaboration-node="'+a.id+'"] > .outline-controls .node-focus');if(focus){focus.click();break;}await delay(40);}
   }
   function scheduleScan(){
     if(scanQueued)return;
@@ -153,7 +156,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
         inbox=next;
       }
       index=counts.entries;noticeError='';renderBell();scan();
-      for(const a of anchors.values())if(a.data&&visible(a.node))void load(a).catch(()=>{});
+      for(const a of anchors.values())if(a.data&&(visible(a.node)||a.editHost&&visible(a.editHost)))void load(a).catch(()=>{});
       if(doc.querySelector('[data-recent-changes]'))await recentChanges();
     }catch(e){if(generation===epoch&&e.name!=='AbortError'){noticeError=e.message;renderBell();}}finally{if(refreshing===generation)refreshing=null;}
   }

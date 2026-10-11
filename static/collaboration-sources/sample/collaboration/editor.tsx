@@ -5,7 +5,7 @@ import {Plate,PlateElement,PlateLeaf,usePlateEditor,ParagraphPlugin} from 'plate
 import {BoldPlugin,ItalicPlugin,CodePlugin} from '@platejs/basic-nodes/react';
 import {ListPlugin,ListItemPlugin,ListItemContentPlugin} from '@platejs/list-classic/react';
 import {getListItemEntry,moveListItemsToList,indentListItems,unindentListItems} from '@platejs/list-classic';
-import {DndContext,PointerSensor,KeyboardSensor,useSensor,useSensors,useDraggable,useDroppable,closestCenter} from '@dnd-kit/core';
+import {DndContext,PointerSensor,KeyboardSensor,useSensor,useSensors,useDraggable,useDroppable,closestCenter,pointerWithin} from '@dnd-kit/core';
 import {MentionPlugin,MentionInputPlugin} from '@platejs/mention/react';
 import {getMentionOnSelectItem} from '@platejs/mention';
 import {LinkPlugin} from '@platejs/link/react';
@@ -24,6 +24,7 @@ import {toTree,fromTree,toComment,fromComment,fromInline,textOf} from './model.m
 const Context=createContext<any>({users:[],readOnly:false});
 const selectMention=getMentionOnSelectItem();
 const uid=()=>crypto.randomUUID();
+const collisions=(args:any)=>{const hits=pointerWithin(args);return hits.length?hits:closestCenter(args);};
 // Open the same Plate mention input used by typing @, retaining the caret.
 export function openMentionPicker(editor:any){
   if(!editor)return;
@@ -164,7 +165,7 @@ export function RichEditor({initial,tree=false,inlineRoot=false,outline=null,nat
     });
     editor.tf.select(ref?.unref()??editor.api.start([]));editor.tf.focus();
   }
-  return <Context.Provider value={{users,onComment,onApprove,owner,readOnly,preview,inlineRoot,titleClasses,comments,outline,mutable,nativeMarkup}}><DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={dragEnd}><Plate editor={editor} readOnly={readOnly} onValueChange={changed}>
+  return <Context.Provider value={{users,onComment,onApprove,owner,readOnly,preview,inlineRoot,titleClasses,comments,outline,mutable,nativeMarkup}}><DndContext sensors={sensors} collisionDetection={collisions} onDragEnd={dragEnd}><Plate editor={editor} readOnly={readOnly} onValueChange={changed}>
     <Popover open={linkOpen} onOpenChange={setLinkOpen}><PopoverAnchor asChild><EditorContainer className={tree?'collaboration-outline-editor':'collaboration-comment-editor'} variant="default" data-collaboration-tree={tree?'':undefined}>
       <Editor variant="none" aria-label={label} placeholder={placeholder} onFocus={()=>{if(tree&&!editor.selection)editor.tf.select(editor.api.start([]));}} onKeyDownCapture={keydown} onCompositionStart={()=>{composing.current=true;}} onCompositionEnd={()=>{composing.current=false;queueMicrotask(changed);}} onPaste={e=>{if(e.clipboardData.files.length){e.preventDefault();setError('暂不支持图片或附件');}}}/>
     </EditorContainer></PopoverAnchor><PopoverContent aria-label="插入链接" className="collaboration-link-dialog"><form onSubmit={e=>{e.preventDefault();try{const target=new URL(url);if(!['http:','https:','mailto:'].includes(target.protocol))throw Error('请输入有效链接');if(linkSelection.current)editor.tf.select(linkSelection.current);const text=editor.api.string(editor.selection) || url;editor.tf.insertNodes({type:'a',url,children:[{text}]});setLinkOpen(false);editor.tf.focus();}catch{setError('请输入 http、https 或 mailto 链接');}}}><label>链接地址<input autoFocus required value={url} onChange={e=>setUrl(e.target.value)}/></label><Button type="submit" size="sm">插入</Button></form></PopoverContent></Popover>
