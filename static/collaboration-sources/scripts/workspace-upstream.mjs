@@ -32,6 +32,7 @@ export function prepareWorkspaceSources(output){
     if(name==='gantt'){
       // Read-only timeline: upstream still drags a bar without onMove, changing only local dates.
       source=replace(source,'const GanttContext = createContext','export const GanttContext = createContext');
+      source=replace(source,'export type GanttFeature = {','export type GanttFeature = {\n  deadlineLabel?: string;');
       source=replace(source,'  children?: ReactNode;\n};\n\nexport const GanttFeatureItemCard','  children?: ReactNode;\n  disabled?: boolean;\n};\n\nexport const GanttFeatureItemCard');
       source=replace(source,'  id,\n  children,\n}) => {\n  const [, setDragging]','  id,\n  children,\n  disabled,\n}) => {\n  const [, setDragging]');
       source=replace(source,'useDraggable({ id });','useDraggable({ id, disabled });');
@@ -41,7 +42,7 @@ export function prepareWorkspaceSources(output){
       source=replace(source,'createInitialTimelineData(new Date())','createInitialTimelineData(initialDate)');
       source=replace(source,'const newWidth = sidebarElement ? 300 : 0;','const newWidth = sidebarElement?.getBoundingClientRect().width ?? 0;');
       source=replace(source,'>Issues</p>','>待办</p>');source=replace(source,'>Duration</p>','>截止时间</p>');
-      source=replace(source,'{duration}</p>','{formatDate(feature.endAt, "MM-dd HH:mm")}</p>');
+      source=replace(source,'{duration}</p>','{feature.deadlineLabel ?? formatDate(feature.endAt, "MM-dd HH:mm")}</p>');
       source=replace(source,'const label = "Today";','const label = "今天";');
       source=replace(source,'behavior: "smooth"','behavior: "auto"');
       source=source.replaceAll('"MMMM yyyy"','"yyyy 年 M 月"').replaceAll('"MMMM"','"M 月"').replaceAll('"MMM"','"M 月"');
