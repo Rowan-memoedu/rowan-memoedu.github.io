@@ -88,9 +88,11 @@ export function Actions({api,anchorId,entry,onEdit,onOpen,openKey,data,refresh,h
     {error&&!open&&<span role="status" className="text-xs text-destructive">{error}</span>}</>;
 }
 
-function Proposal({api,proposal,anchorId,data,refresh,onAccepted,registerSave,notificationTarget,titleClasses,nativeMarkup,commentCounts}:any){
+function Proposal({api,proposal,anchorId,data,refresh,onAccepted,registerSave,notificationTarget,titleClasses,nativeMarkup,nativeMetadata,commentCounts}:any){
   const [state,setState]=useState('saved'),[error,setError]=useState(''),[users,setUsers]=useState([]),[preview,setPreview]=useState<any>(null),[commentNode,setCommentNode]=useState<string|null>(null),[remote,setRemote]=useState<any>(null),[version,setVersion]=useState(0);
   const current=useRef(proposal),initial=useRef(proposal.nodes),save=useRef<any>(null),latest=useRef(proposal),editor=useRef<any>(null),mounted=useRef(true);
+  const previewDialog=useRef<HTMLDialogElement>(null),[approving,setApproving]=useState(false);
+  useEffect(()=>{if(preview&&!previewDialog.current?.open)previewDialog.current?.showModal();},[preview]);
   latest.current=proposal;
   const history=proposal.status==='accepted'&&notificationTarget?.proposalId===proposal.id;
   useEffect(()=>{if(notificationTarget?.proposalId===proposal.id&&notificationTarget.threadId){const t=data.threads.find((t:any)=>t.id===notificationTarget.threadId);if(t)setCommentNode(t.proposalNodeId);}},[notificationTarget?.id]);
@@ -104,10 +106,11 @@ function Proposal({api,proposal,anchorId,data,refresh,onAccepted,registerSave,no
     else if(!save.current.running){save.current.conflict=true;setState('conflict');setRemote(proposal);}
   },[proposal.revision,proposal.status,proposal.operation?.status]);
   async function showPreview(nodeId:string){
-    setError('');try{if(!await save.current.flush())return;const result=await api.get('proposals/'+proposal.id+'/preview?nodeId='+encodeURIComponent(nodeId));setPreview(result);}catch(e:any){setError(e.message);}
+    setError('');try{if(!await save.current.flush())throw Error('修改尚未保存，请处理保存提示后再采纳。');const result=await api.get('proposals/'+proposal.id+'/preview?nodeId='+encodeURIComponent(nodeId));setPreview(result);}catch(e:any){setError(e.message);}
   }
   async function approve(){
-    try{await api.post('approve',{requestId:crypto.randomUUID(),proposalId:proposal.id,nodeId:preview.nodeId,revision:preview.revision,projectionHash:preview.projectionHash});setPreview(null);await refresh();}catch(e:any){setError(e.message);}
+    if(approving)return;setApproving(true);setError('');
+    try{await api.post('approve',{requestId:crypto.randomUUID(),proposalId:proposal.id,nodeId:preview.nodeId,revision:preview.revision,projectionHash:preview.projectionHash});setPreview(null);await refresh();}catch(e:any){setError(e.message);}finally{setApproving(false);}
   }
   async function conflict(){try{const latest=await api.get('anchors/'+anchorId);setRemote(latest.proposals.find((p:any)=>p.id===proposal.id));}catch(e:any){setError(e.message);}}
   function resolveConflict(mine:boolean){
@@ -122,12 +125,12 @@ function Proposal({api,proposal,anchorId,data,refresh,onAccepted,registerSave,no
   return <div className="collaboration-contribution" data-proposal-id={proposal.id} data-status={proposal.status}>
     <div className={adopting||proposal.operation?.status==='synced'||['error','conflict'].includes(state)?'collaboration-save-state':'collaboration-visually-hidden'}><span role="status">{proposal.operation?.status==='synced'?'已同步 RemNote，等待网站发布':adopting?(proposal.status==='accepted'?'已采纳':proposal.operation?.status==='attention'?(proposal.operation.error==='unsupported-format'?'当前格式不能无损同步，请保留原引用文字及格式；其他原生格式请在 RemNote 中修改':'同步需要核查，请站长查看本机记录'):proposal.operation?.status==='retry'?'同步暂未完成，将继续重试':'正在同步到 RemNote…'):statusText[state]}</span>
     </div>
-    {(proposal.status!=='accepted'||history)&&initial.current.length>0&&<>{history&&<p className="text-xs">私密讨论历史（正式正文中的 @ 已移除）</p>}<RichEditor key={version} initial={initial.current} tree inlineRoot={proposal.kind==='edit'||proposal.kind==='outline'} outline={proposal.outline} nativeMarkup={nativeMarkup} titleClasses={titleClasses} users={users} readOnly={adopting||state==='conflict'} editorRef={editor} onChange={(nodes:any)=>save.current.change(nodes)} onEmpty={(children:any)=>void removeEmpty(children)} comments={comments} owner={api.user.owner} onComment={setCommentNode} onApprove={showPreview} label={history?'私密讨论历史':proposal.kind==='add'?'新增子节点编辑器':'编辑节点编辑器'}/></>}
+    {(proposal.status!=='accepted'||history)&&initial.current.length>0&&<>{history&&<p className="text-xs">私密讨论历史（正式正文中的 @ 已移除）</p>}<RichEditor key={version} initial={initial.current} tree inlineRoot={proposal.kind==='edit'||proposal.kind==='outline'} outline={proposal.outline} nativeMarkup={nativeMarkup} nativeMetadata={nativeMetadata} titleClasses={titleClasses} users={users} readOnly={adopting||state==='conflict'} editorRef={editor} onChange={(nodes:any)=>save.current.change(nodes)} onEmpty={(children:any)=>void removeEmpty(children)} comments={comments} owner={api.user.owner} onComment={setCommentNode} onApprove={showPreview} label={history?'私密讨论历史':proposal.kind==='add'?'新增子节点编辑器':'编辑节点编辑器'}/></>}
     {error&&<p role="status" className="text-sm text-destructive">{error}</p>}
     {state==='error'&&<Button variant="outline" size="sm" onClick={()=>void save.current.flush()}>重试保存</Button>}
     {state==='conflict'&&<div><Button variant="outline" size="sm" onClick={()=>void conflict()}>对照最新版本</Button>{remote&&<><p>对方的最新内容：</p><RichEditor key={'remote-'+remote.revision} initial={remote.nodes} tree readOnly/>
       <Button size="sm" variant="outline" onClick={()=>resolveConflict(false)}>载入对方版本</Button> <Button size="sm" onClick={()=>resolveConflict(true)}>保留我的内容继续编辑</Button></>}</div>}
-    {preview&&<div role="region" aria-label="正式正文预览" className="collaboration-adoption-preview"><p>{preview.kind==='edit'?'更新原节点文字，保留原 ID 和已有子节点。':'只采纳所选节点及其子树。'}@ 标记不会写入正式正文。</p><Projection nodes={preview.nodes}/><Button size="sm" onClick={()=>void approve()}>确认采纳</Button> <Button variant="ghost" size="sm" onClick={()=>setPreview(null)}>取消</Button></div>}
+    {preview&&<dialog ref={previewDialog} aria-label="正式正文预览" className="collaboration-ui collaboration-adoption-preview" onCancel={e=>{e.preventDefault();if(!approving)setPreview(null);}}><p>{preview.kind==='edit'?'更新原节点文字，保留原 ID 和已有子节点。':'只采纳所选节点及其子树。'}@ 标记不会写入正式正文。</p><Projection nodes={preview.nodes}/>{error&&<p role="status" className="collaboration-error">{error}</p>}<Button size="sm" disabled={approving} onClick={()=>void approve()}>{approving?'正在提交…':'确认采纳'}</Button> <Button variant="ghost" size="sm" disabled={approving} onClick={()=>setPreview(null)}>取消</Button></dialog>}
     {commentNode&&<div className="collaboration-inline-discussion"><NodeDiscussion key={commentNode} api={api} target={discussionTarget(proposal,commentNode,anchorId)} data={data} legacyProposalId={proposal.kind==='edit'&&commentNode===rootId?proposal.id:undefined} legacyNodeId={rootId} refresh={refresh} highlight={notificationTarget?.sourceId} onClose={()=>setCommentNode(null)} beforeSend={()=>save.current.flush()}/></div>}
   </div>;
 }

@@ -35,7 +35,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     }});
   }
   function actionProps(a){return {api,anchorId:a.id,entry:index[a.id],data:a.data,canEdit:a.data?.canEdit??a.canEdit,onEdit:()=>add(a,'outline'),onOpen:()=>load(a),refresh:()=>load(a,true),openKey:a.openKey,highlight:a.target?.sourceId};}
-  function groupProps(a){return {api,anchorId:a.id,data:a.data,commentCounts:index,refresh:()=>load(a,true),onAccepted:proposal=>restore(a,proposal),registerSave,notificationTarget:a.target,nativeMarkup:a.nativeMarkup,titleClasses:[...((a.editNode??a.node).querySelector(':scope > .node-content')?.classList??[])].filter(c=>c.startsWith('document-title')).join(' ')};}
+  function groupProps(a){return {api,anchorId:a.id,data:a.data,commentCounts:index,refresh:()=>load(a,true),onAccepted:proposal=>restore(a,proposal),registerSave,notificationTarget:a.target,nativeMarkup:a.nativeMarkup,nativeMetadata:a.nativeMetadata,titleClasses:[...((a.editNode??a.node).querySelector(':scope > .node-content')?.classList??[])].filter(c=>c.startsWith('document-title')).join(' ')};}
   function render(a){
     if(!a.node.isConnected)return;
     if(a.data?.proposals.some(p=>p.status==='adopting')&&doc.visibilityState!=='hidden'){
@@ -52,26 +52,33 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
       }else a.group.update(groupProps(a));
     }else if(a.group){a.group.dispose();a.groupHost.remove();a.group=null;a.groupHost=null;cleanContainer(a);}
     if(a.data?.proposals.some(p=>['edit','outline'].includes(p.kind)&&['draft','adopting'].includes(p.status))){
+      const outline=a.data.proposals.find(p=>p.kind==='outline'&&['draft','adopting'].includes(p.status))?.outline;
+      if(a.editGroup&&a.editOutline!==!!outline){a.editGroup.dispose();a.editHost.remove();a.editGroup=null;a.editHost=null;restoreNative(a);}
       if(!a.editGroup){
-        const outline=a.data.proposals.find(p=>p.kind==='outline'&&['draft','adopting'].includes(p.status))?.outline;
-        a.editNode=outline?doc.getElementById('node-'+outline.documentId):a.node;
+        a.editOutline=!!outline;
+        // The document is a validation context, never the editor's mount point.
+        a.editNode=a.node;
         if(!a.editNode)return;
-        a.nativeMarkup={};
-        for(const node of [a.editNode,...a.editNode.querySelectorAll('.outline-node[id^="node-r-"]')]){
+        a.nativeMarkup={};a.nativeMetadata={};
+        const context=outline?doc.getElementById('node-'+outline.documentId):a.node;
+        for(const node of [context,...context.querySelectorAll('.outline-node[id^="node-r-"]')]){
           const source=node.querySelector(':scope > .node-content');if(!source)continue;
           const cloned=source.cloneNode(true);cloned.querySelectorAll('.collaboration-ui').forEach(el=>el.remove());a.nativeMarkup[nodeId(node)]=cloned.innerHTML;
+          const annotation=node.querySelector(':scope > .document-body > .document-annotations > .callout-label')?.cloneNode(true);annotation?.querySelectorAll('button').forEach(el=>el.remove());
+          const control=node.querySelector(':scope > .outline-controls .node-focus');
+          a.nativeMetadata[nodeId(node)]={parentReference:node.dataset.parentReference??null,remType:node.dataset.remType,listNumber:node.dataset.listNumber,focusLabel:control?.textContent,bulletColor:control&&win.getComputedStyle(control,'::before').backgroundColor,annotationHeader:annotation?.innerHTML,folded:node.classList.contains('is-folded'),sourceCallout:node.dataset.sourceCallout==='true',calloutType:node.dataset.sourceCalloutType,calloutLabel:node.dataset.sourceCalloutLabel};
         }
         const content=a.editNode.querySelector(':scope > .node-content');
         a.editNode.dataset.collaborationEditing='true';
         let view=nativeViews.get(a.editNode);
         if(!view){view={users:new Set(),native:[content,a.editNode.querySelector(':scope > .outline-controls'),...(outline?[...a.editNode.children].filter(el=>el.matches('ul,.document-body')):[])].filter(Boolean).map(el=>({el,hidden:el.hidden}))};nativeViews.set(a.editNode,view);}
         view.users.add(a);a.nativeView=view;view.native.forEach(({el})=>{el.hidden=true;});
-        if(outline)a.editNode.dataset.collaborationContext=outline.documentId;
+        if(outline)a.editNode.dataset.collaborationContext=a.id;
         const host=doc.createElement('div');host.className='collaboration-ui collaboration-edit-host';host.dataset.collaborationPrivate='';
-        if(outline)host.dataset.documentContext=outline.documentId;
+        host.dataset.nodeContext=a.id;
         content.before(host);a.editHost=host;a.editGroup=UI.mount(host,UI.ProposalGroup,{...groupProps(a),edit:true});
       }else a.editGroup.update({...groupProps(a),edit:true});
-    }else if(a.editGroup){a.editGroup.dispose();a.editHost.remove();a.editGroup=null;a.editHost=null;restoreNative(a);}
+    }else if(a.editGroup){a.editGroup.dispose();a.editHost.remove();a.editGroup=null;a.editHost=null;restoreNative(a);doc.querySelector('.reading-outline')?.personalOutlineRefresh?.();}
   }
   function restoreNative(a){const node=a.editNode??a.node,view=a.nativeView;if(view){view.users.delete(a);if(!view.users.size){view.native.forEach(({el,hidden})=>{el.hidden=hidden;});nativeViews.delete(node);delete node.dataset.collaborationEditing;delete node.dataset.collaborationContext;}}a.nativeView=null;a.editNode=null;}
   function cleanContainer(a){const container=a.node.querySelector(':scope > [data-collaboration-container]');if(container&&!container.children.length){container.remove();win.dispatchEvent(new win.CustomEvent('personal-outline-changed',{detail:{nodeIds:[a.node.id]}}));}}
@@ -88,8 +95,8 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
   }
   async function add(a,mode='outline'){
     await api.post('proposals',{requestId:crypto.randomUUID(),anchorId:a.id,mode});await load(a,true);
-    // Focus the selected source row after React commits the document context.
-    for(let i=0;i<20;i++){const focus=a.editHost?.querySelector('[data-collaboration-node="'+a.id+'"] > .outline-controls .node-focus');if(focus){focus.click();break;}await delay(40);}
+    // Editing starts at the selected line without changing the reader route.
+    for(let i=0;i<20;i++){const line=a.editHost?.querySelector('[data-contribution-node="'+a.id+'"]');if(line){line.click();break;}await delay(40);}
   }
   function scheduleScan(){
     if(scanQueued)return;
@@ -116,15 +123,19 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
         // Folded source branches are ordinary dormant content, not hundreds of
         // mounted React editors. The same focus/expand event activates them.
         if(node.closest('[hidden],[inert]'))continue;
-        const content=node.querySelector(':scope > .node-content');if(!content)continue;
-        const host=doc.createElement('span');host.className='collaboration-ui collaboration-actions';host.dataset.collaborationPrivate='';content.append(host);
-        const document=node.closest('[data-rem-type="document"],[data-rem-type="dailyDocument"]');
-        a={id,node,actionHost:host,canEdit:user?.role!=='reader'||document?.dataset.readerEditable==='true'};a.actions=UI.mount(host,UI.Actions,actionProps(a));anchors.set(id,a);
+        a=ensureAnchor(node);if(!a)continue;
       }
       const state=JSON.stringify([index[id]??null,user?.id,user?.name,user?.owner,user?.role]);
       if(a.renderState!==state){a.renderState=state;render(a);}
       if(index[id]?.proposals&&visible(node)&&!a.data&&!a.loading)void load(a).catch(()=>{});
     }
+  }
+  function ensureAnchor(node){
+    const id=nodeId(node);let a=anchors.get(id);if(a)return a;
+    const content=node.querySelector(':scope > .node-content');if(!content)return;
+    const host=doc.createElement('span');host.className='collaboration-ui collaboration-actions';host.dataset.collaborationPrivate='';content.append(host);
+    const document=node.closest('[data-rem-type="document"],[data-rem-type="dailyDocument"]');
+    a={id,node,actionHost:host,canEdit:user?.role!=='reader'||document?.dataset.readerEditable==='true'};a.actions=UI.mount(host,UI.Actions,actionProps(a));anchors.set(id,a);return a;
   }
   async function restore(a,proposal){
     const restoredId=proposal.operation?.id??proposal.id;
