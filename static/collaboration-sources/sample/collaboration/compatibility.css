@@ -17,7 +17,9 @@
 .reading-outline [data-collaboration-editing="true"] > .outline-controls { display:none !important; }
 .reading-outline .focus-ancestor > .collaboration-edit-host[data-node-context][data-reader-active="true"] { display:block !important; }
 .reading-outline .focus-ancestor > :is(ul,.document-body) > .collaboration-proposals[data-reader-active="true"] {display:block !important;}
-.reading-outline [data-collaboration-context] > :is(ul,.document-body) { display:none !important; }
+/* A later native descendant may be absent from an ancestor's frozen draft. */
+.reading-outline [data-collaboration-context]:not(.focus-ancestor) > :is(ul,.document-body),
+.reading-outline [data-collaboration-context]:has(> .collaboration-edit-host[data-reader-active="true"]) > :is(ul,.document-body) { display:none !important; }
 .collaboration-ui { --collaboration-edit-color:#c62828; }
 .reading-outline .collaboration-outline-node > .outline-controls .node-focus { position:relative; color:transparent; }
 .reading-outline .collaboration-outline-node > .outline-controls .node-focus::before { content:""; position:absolute; left:50%; top:50%; width:.78em; height:.78em; border-radius:50%; transform:translate(-50%,-50%); pointer-events:none; }
