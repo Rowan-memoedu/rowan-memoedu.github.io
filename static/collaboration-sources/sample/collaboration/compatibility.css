@@ -5,6 +5,8 @@
 .collaboration-ui button { cursor: pointer; }
 .collaboration-ui [hidden] { display: none !important; }
 .collaboration-ui svg { display: inline-block; vertical-align: middle; }
+.collaboration-ui .collaboration-todo-drag {position:absolute;left:-12px;width:12px;height:20px;opacity:0;}
+.collaboration-ui .outline-node:hover>.outline-controls .collaboration-todo-drag,.collaboration-ui .collaboration-todo-drag:focus-visible {opacity:1;}
 .collaboration-ui p, .collaboration-ui h4 { margin-block: 0; }
 .collaboration-ui [data-slate-editor] { min-height: 1.45em; font:inherit; border:0; padding:0; border-radius:0; overflow:visible; }
 .collaboration-ui .collaboration-outline-editor { overflow:visible; caret-color:currentColor; }
@@ -93,3 +95,4 @@
 .collaboration-bell-icon { width: 20px; height: 20px; color: #202122; position: absolute; inset: 0; }
 .collaboration-ui .mw-echo-notifications-badge { background: transparent; border: 0; padding: 0; }
 .collaboration-ui [data-proposal-id]+[data-proposal-id] { margin-top:var(--outline-node-gap,.6667em); }
+.collaboration-outline-node:has(> .outline-controls .node-todo[data-state=checked])>.node-content {text-decoration:line-through;opacity:.7;}

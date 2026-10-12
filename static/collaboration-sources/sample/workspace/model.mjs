@@ -5,7 +5,7 @@ export const dateText=value=>value?value.replace('T',' '):'未设截止时间';
 export const civilDate=value=>{const [y,m,d,h=0,n=0]=value.split(/[-T:]/u).map(Number);return new Date(y,m-1,d,h,n);};
 export const beijingNow=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date()).replace(' ','T');
 export const byDeadline=(a,b)=>(a.deadline??'9999').localeCompare(b.deadline??'9999')||a.position-b.position||a.id.localeCompare(b.id);
-export const overdue=(task,now=beijingNow())=>task.status!=='done'&&!!task.deadline&&task.deadline<now;
+export const overdue=(task,now=beijingNow())=>task.status!=='done'&&!!task.deadline&&(task.deadline.length===10?task.deadline+'T23:59':task.deadline)<now;
 export const asFeature=task=>({id:task.id,name:task.title,startAt:civilDate(task.startAt??task.deadline),endAt:civilDate(task.deadline),deadlineLabel:task.deadline.slice(5).replace('T',' '),status:statuses.find(s=>s.id===task.status)});
 
 export function createWorkspaceClient(reader){

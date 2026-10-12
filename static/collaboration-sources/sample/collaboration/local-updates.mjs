@@ -1,5 +1,17 @@
 import DOMPurify from 'dompurify';
 
+export function outlineChildList(parent,undo){
+  let list=parent.querySelector(':scope > ul, :scope > .document-body > ul, :scope > .document-body > .document-annotations > .callout-content > ul');
+  if(list)return list;
+  const doc=parent.ownerDocument;
+  let container=parent.querySelector(':scope > .document-body')??parent;
+  if(parent.dataset.documentLayout==='split'){
+    const aside=doc.createElement('aside');aside.className='document-annotations callout';aside.dataset.callout='note';aside.setAttribute('aria-label','母节点注解，可在框内上下滚动');aside.tabIndex=0;
+    const content=doc.createElement('div');content.className='callout-content';aside.append(content);container.prepend(aside);container=content;undo.push(()=>{if(!content.children.length)aside.remove();});
+  }
+  list=doc.createElement('ul');container.append(list);undo.push(()=>{if(!list.children.length)list.remove();});return list;
+}
+
 /** Reversible, session-only views of verified local writes. No persistent body cache. */
 export function createLocalUpdates(win){
   const doc=win.document,purifier=DOMPurify.sanitize?DOMPurify:DOMPurify(win),applied=new Map();
@@ -13,16 +25,7 @@ export function createLocalUpdates(win){
     for(const child of node.querySelectorAll('.outline-node'))if(!/^node-r-(?:[a-f0-9]{2})+$/u.test(child.id))throw Error('局部子节点身份无效');
     return node;
   }
-  function childList(parent,undo){
-    let list=parent.querySelector(':scope > ul, :scope > .document-body > ul, :scope > .document-body > .document-annotations > .callout-content > ul');
-    if(list)return list;
-    let container=parent.querySelector(':scope > .document-body')??parent;
-    if(parent.dataset.documentLayout==='split'){
-      const aside=doc.createElement('aside');aside.className='document-annotations callout';aside.dataset.callout='note';aside.setAttribute('aria-label','母节点注解，可在框内上下滚动');aside.tabIndex=0;
-      const content=doc.createElement('div');content.className='callout-content';aside.append(content);container.prepend(aside);container=content;undo.push(()=>{if(!content.children.length)aside.remove();});
-    }
-    list=doc.createElement('ul');container.append(list);undo.push(()=>{if(!list.children.length)list.remove();});return list;
-  }
+  const childList=outlineChildList;
   function remove(anchorId){
     const ids=[];
     for(const [key,entry] of [...applied].reverse())if(!anchorId||entry.anchorId===anchorId){for(const undo of entry.undo.reverse())undo();ids.push(...entry.ids);applied.delete(key);}
@@ -34,6 +37,7 @@ export function createLocalUpdates(win){
     if([...applied].some(([key,entry])=>entry.anchorId===anchorId&&!keys.has(key)))remove(anchorId);
     for(const update of updates){
       if(applied.has(update.id))continue;
+      if(['todo','archive','move'].includes(update.kind))continue; // native-state binding preserves the complete existing subtree
       const parsed=update.fragments.map(parse),undo=[],ids=[];
       try{
         if(update.kind==='outline'){
@@ -83,7 +87,7 @@ export function createLocalUpdates(win){
             for(const child of [...(node.querySelector(':scope > ul')?.children??[])])insert(existing,child,undo,ids);
           }else{
             const parent=doc.getElementById('node-'+update.parentId);
-            if(!parent||parent!==anchor&&!anchor.contains(parent))throw Error('新增节点父级无效');
+            if(!parent||update.kind!=='restore'&&parent!==anchor&&!anchor.contains(parent))throw Error('新增节点父级无效');
             insert(parent,node,undo,ids);
           }
         }

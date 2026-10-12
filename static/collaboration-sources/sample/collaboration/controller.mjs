@@ -1,4 +1,6 @@
 import {createLocalUpdates} from './local-updates.mjs';
+import {createCollaborationClient} from './client.mjs';
+import {createNodeStates} from './node-states.mjs';
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const visible=element=>element.isConnected&&!element.closest('[hidden],[inert]')&&element.getClientRects().length>0;
 const nodeId=element=>element.id.replace(/^node-/u,'');
@@ -6,16 +8,18 @@ const nodeId=element=>element.id.replace(/^node-/u,'');
 export function attachCollaboration(session,{window:win=window,loadUI=()=>import('./panels.tsx')}={}){
   const doc=win.document;
   const localUpdates=createLocalUpdates(win);
-  let UI=null,uiPromise=null,api=null,user=null,timer=null,epoch=0,observer=null,refreshing=null,startError=null,scanQueued=null;
+  const nodeStates=createNodeStates(win);let latestNodeStates=[];
+  let UI=null,uiPromise=null,api=null,user=null,timer=null,pendingTimer=null,epoch=0,observer=null,refreshing=null,startError=null,scanQueued=null;
   let inbox={items:[],unreadCount:0,version:0,nextOffset:null},index={},noticeError='',bell=null,bellHost=null;
   const anchors=new Map(),savers=new Set(),restored=new Set(),nativeViews=new Map();
   const cancelled=()=>Object.assign(Error('登录状态已改变'),{name:'AbortError'});
   function clear(){
-    epoch++;scanQueued=null;user=null;api=null;win.clearInterval(timer);timer=null;observer?.disconnect();observer=null;refreshing=null;
+    epoch++;scanQueued=null;user=null;api=null;win.clearInterval(timer);timer=null;win.clearTimeout(pendingTimer);pendingTimer=null;observer?.disconnect();observer=null;refreshing=null;
     startError?.remove();startError=null;
     bell?.dispose();bell=null;bellHost?.remove();bellHost=null;
     for(const a of anchors.values()){win.clearTimeout(a.syncTimer);a.actions?.dispose();a.group?.dispose();a.editGroup?.dispose();a.actionHost?.remove();a.groupHost?.remove();a.editHost?.remove();restoreNative(a);cleanContainer(a);}
     anchors.clear();savers.clear();restored.clear();index={};inbox={items:[],unreadCount:0,version:0,nextOffset:null};
+    nodeStates.clear();latestNodeStates=[];
     localUpdates.clear();
     for(const el of doc.querySelectorAll('[data-collaboration-private]'))el.remove();
   }
@@ -27,6 +31,13 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     return result;
   }
   const registerSave=save=>{savers.add(save);return()=>savers.delete(save);};
+  win.addEventListener('personal-todo-toggle',async event=>{
+    if(!api||!session.authenticated)return;
+    const {nodeId,todoState}=event.detail??{},node=doc.getElementById('node-'+nodeId);
+    if(!node||node.dataset.todoEditable!=='true')return;
+    try{await api.post('todos',{requestId:crypto.randomUUID(),anchorId:nodeId,todoState,expectedTodoState:node.dataset.todoState||null});await poll();}
+    catch(error){noticeError=error.message;renderBell();const message=doc.createElement('span');message.setAttribute('role','status');message.className='collaboration-error';message.dataset.collaborationPrivate='';message.textContent=error.message;node.querySelector(':scope > .node-content')?.append(message);}
+  });
   async function flushAll(){for(const save of savers)if(!await save())return false;return true;}
   function renderBell(){
     if(!bell||!api)return;
@@ -88,7 +99,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     a.loading=(async()=>{
       try{const data=await api.get('anchors/'+a.id);if(generation!==epoch||!a.node.isConnected)return;
         const revision=JSON.stringify(data);if(a.dataRevision===revision)return;
-        a.dataRevision=revision;a.data=data;render(a);localUpdates.apply(a.id,data.localUpdates??[]);}
+        a.dataRevision=revision;a.data=data;render(a);localUpdates.apply(a.id,data.localUpdates??[]);nodeStates.apply(latestNodeStates);}
       catch(error){if(generation===epoch&&[401,403,404].includes(error.status)){localUpdates.remove(a.id);a.data=null;render(a);}throw error;}
     })();
     try{await a.loading;if(refresh)void poll();return a.data;}finally{a.loading=null;}
@@ -166,7 +177,9 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
         }
         inbox=next;
       }
-      index=counts.entries;noticeError='';renderBell();scan();
+      index=counts.entries;latestNodeStates=counts.nodeStates??[];nodeStates.apply(latestNodeStates);noticeError='';renderBell();scan();
+      win.clearTimeout(pendingTimer);pendingTimer=null;
+      if(latestNodeStates.some(state=>['queued','retry'].includes(state.syncStatus)))pendingTimer=win.setTimeout(()=>{pendingTimer=null;if(generation===epoch)void poll();},1500);
       for(const a of anchors.values())if(a.data&&(visible(a.node)||a.editHost&&visible(a.editHost)))void load(a).catch(()=>{});
       if(doc.querySelector('[data-recent-changes]'))await recentChanges();
     }catch(e){if(generation===epoch&&e.name!=='AbortError'){noticeError=e.message;renderBell();}}finally{if(refreshing===generation)refreshing=null;}
@@ -230,7 +243,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     try{
       await session.ready;if(generation!==epoch||!session.authenticated)return;
       uiPromise??=loadUI().catch(error=>{uiPromise=null;throw error;});UI??=await uiPromise;if(generation!==epoch)return;
-      user=await request('session');api={user,get:route=>request(route),post:request,users:context=>request('mentions?'+new URLSearchParams(Object.entries(context).filter(([,v])=>v!==undefined)))};
+      api=createCollaborationClient(session,{guard:()=>{if(generation!==epoch)throw cancelled();}});user=await api.get('session');api.user=user;
       bellHost=doc.createElement('span');bellHost.className='collaboration-ui';(doc.querySelector('.site-header-inner')??doc.body).append(bellHost);
       bell=UI.mount(bellHost,UI.Bell,{inbox,onOpen:()=>poll(),onJump:jump,onMore:()=>{}});
       observer=new win.MutationObserver(records=>{if(sourceChanged(records))scheduleScan();});const root=doc.querySelector('.reading-outline');if(root)observer.observe(root,{childList:true,subtree:true});

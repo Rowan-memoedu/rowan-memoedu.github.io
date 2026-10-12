@@ -50,6 +50,14 @@
 .workspace-ui .workspace-undated {margin-top:16px;}
 .workspace-ui .workspace-footer {margin-top:18px;}
 .workspace-ui .workspace-footer a {color:var(--workspace-link);}
+.workspace-ui .workspace-dependency-view {position:relative;overflow:hidden;}
+.workspace-ui .workspace-dependency-lines {position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:40;color:var(--workspace-link);}
+.workspace-ui .workspace-choices {display:flex;flex-wrap:wrap;gap:5px 16px;padding:8px;border:1px solid var(--workspace-border);margin:12px 0;}
+.workspace-ui .workspace-choices label {display:inline-flex;align-items:center;gap:7px;margin:4px 0;}
+.workspace-ui .workspace-form label .workspace-inline {display:flex;}
+.workspace-ui .workspace-form .workspace-inline>button {white-space:nowrap;flex-shrink:0;}
+.workspace-ui .workspace-form label input[type=checkbox] {width:auto;display:inline-block;}
+.workspace-ui .workspace-node-collaboration {border-top:1px solid var(--workspace-border);padding-top:16px;}
 .workspace-ui.workspace-dialog {width:650px;max-width:calc(100vw - 24px);max-height:90vh;overflow:auto;margin:auto;padding:22px;border:1px solid var(--workspace-border);border-radius:6px;background:var(--workspace-paper);}
 .workspace-ui.workspace-dialog::backdrop {background:#20212277;}
 .workspace-ui .workspace-form {margin:12px 0;}

@@ -11,7 +11,7 @@ import {MentionPlugin,MentionInputPlugin} from '@platejs/mention/react';
 import {getMentionOnSelectItem} from '@platejs/mention';
 import {LinkPlugin} from '@platejs/link/react';
 import {InlineEquationPlugin} from '@platejs/math/react';
-import {MessageSquareTextIcon,SquareIcon} from 'lucide-react';
+import {MessageSquareTextIcon,SquareIcon,GripVerticalIcon} from 'lucide-react';
 import {Editor,EditorContainer} from '../upstream/collaboration/plate/registry/ui/editor';
 import {ParagraphElement} from '../upstream/collaboration/plate/registry/ui/paragraph-node';
 import {MentionElement} from '../upstream/collaboration/plate/registry/ui/mention-node';
@@ -19,6 +19,8 @@ import {LinkElement} from '../upstream/collaboration/plate/registry/ui/link-node
 import {InlineEquationElement} from '../upstream/collaboration/plate/registry/ui/equation-node';
 import {InlineCombobox,InlineComboboxContent,InlineComboboxEmpty,InlineComboboxGroup,InlineComboboxInput,InlineComboboxItem} from '../upstream/collaboration/plate/registry/ui/inline-combobox';
 import {Button} from '../upstream/collaboration/plate/components/ui/button';
+import {Checkbox} from '../upstream/collaboration/plate/components/ui/checkbox';
+import {nextTodoState,checkedTodoState} from './todo.mjs';
 import {Popover,PopoverContent,PopoverAnchor} from './popover';
 import {toTree,fromTree,toComment,fromComment,fromInline,textOf} from './model.mjs';
 import {outlineView,routeNodeId,canAdoptOutlineNode,plateOutlineNodes,documentViewSplit} from './outline-view.mjs';
@@ -84,9 +86,10 @@ function Item(props:any){
   const focus=()=>{window.location.hash='node-'+props.element.id;};
   return <PlateElement {...props} ref={drag.setNodeRef} as="li" id={'discussion-node-'+props.element.id} style={{...props.style,'--collaboration-source-bullet':metadata?.bulletColor} as any} className={'outline-node collaboration-outline-node'+(documentType&&!annotationContext?' outline-document':'')+(title?' document-current is-focused':'')+(scope?.ancestor?' focus-ancestor':'')+(callout?' inline-document-callout callout':'')} attributes={{...props.attributes,hidden:scope?.hidden,'data-rem-type':metadata?.remType,'data-document-role':annotationContext?'annotation':documentType?'document':undefined,'data-reader-node':!!scope&&!scope.hidden&&!scope.ancestor,'data-callout':callout?metadata.calloutType??'inline':undefined,'data-collaboration-node':props.element.id,'data-folded':folded&&!scope?.ancestor&&!title,'data-editable':editable&&!readOnly&&!preview,'data-draggable':draggable,'data-dragging':drag.isDragging}}>
     {callout&&<CalloutLabel name={metadata.calloutLabel}/>}
-    {!preview&&<span className="outline-controls" data-collaboration-controls="" contentEditable={false}>
+    {(!preview||props.element.todoState)&&<span className="outline-controls" data-collaboration-controls="" contentEditable={false}>
+      {props.element.todoState&&draggable&&<button type="button" ref={drag.setActivatorNodeRef} {...drag.attributes} {...drag.listeners} className="collaboration-todo-drag" aria-label="拖动待办节点" onMouseDown={e=>e.preventDefault()}><GripVerticalIcon size={12}/></button>}
       <button className="fold-button" type="button" aria-label={folded?'展开子节点':'折叠子节点'} aria-expanded={!folded} disabled={!nested} onMouseDown={e=>e.preventDefault()} onClick={()=>setFolded(v=>!v)}>{nested?(folded?'▸':'▾'):' '}</button>
-      <button ref={drag.setActivatorNodeRef} {...(draggable?drag.attributes:{})} {...drag.listeners} className={'node-focus'+(documentType?' document-focus':metadata?.listNumber?' numbered-focus':'')} type="button" aria-label={draggable?'拖动节点或聚焦此节点':'聚焦此节点'} onMouseDown={e=>e.preventDefault()} onClick={focus}>{documentType?metadata.focusLabel??'📄':metadata?.listNumber?metadata.focusLabel:'●'}</button>
+      {props.element.todoState?<Checkbox className="node-todo" aria-label={props.element.todoState==='Finished'?'取消完成待办':'完成待办'} checked={props.element.todoState==='Finished'} disabled={!editable||readOnly} onMouseDown={e=>e.preventDefault()} onCheckedChange={checked=>props.editor.tf.setNodes({todoState:checkedTodoState(checked)},{at:path})}/>:<button ref={drag.setActivatorNodeRef} {...(draggable?drag.attributes:{})} {...drag.listeners} className={'node-focus'+(documentType?' document-focus':metadata?.listNumber?' numbered-focus':'')} type="button" aria-label={draggable?'拖动节点或聚焦此节点':'聚焦此节点'} onMouseDown={e=>e.preventDefault()} onClick={focus}>{documentType?metadata.focusLabel??'📄':metadata?.listNumber?metadata.focusLabel:'●'}</button>}
     </span>}{props.children}
   </PlateElement>;
 }
@@ -214,6 +217,7 @@ export function RichEditor({initial,tree=false,inlineRoot=false,outline=null,nat
       if(mark[key]&&!e.shiftKey){handled();editor.tf.toggleMark(mark[key]);return;}
       if(key==='k'){handled();linkSelection.current=editor.selection;setUrl('');setLinkOpen(true);return;}
       if(key==='m'&&e.shiftKey){handled();editor.getTransforms(InlineEquationPlugin).insert.inlineEquation('');return;}
+      if(tree&&key==='enter'&&!e.shiftKey){handled();if(e.repeat)return;const entry=getListItemEntry(editor);if(entry&&(!outline||mutable(entry.listItem[0].id)))editor.tf.setNodes({todoState:nextTodoState(entry.listItem[0].todoState)},{at:entry.listItem[1]});return;}
       if(key==='enter'&&onSubmit){handled();onSubmit();return;}
     }
     if(!tree)return;

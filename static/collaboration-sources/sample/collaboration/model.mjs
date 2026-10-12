@@ -18,7 +18,7 @@ export function fromInline(children){
   return runs.length?runs:[{text:''}];
 }
 export function toTree(nodes){
-  return [{type:'ul',id:uid(),children:nodes.map(n=>({type:'li',id:n.id,children:[{type:'lic',id:uid(),children:toInline(n.content)},...(n.children.length?toTree(n.children):[])]}))}];
+  return [{type:'ul',id:uid(),children:nodes.map(n=>({type:'li',id:n.id,...('todoState'in n?{todoState:n.todoState}:{}),children:[{type:'lic',id:uid(),children:toInline(n.content)},...(n.children.length?toTree(n.children):[])]}))}];
 }
 export function fromTree(value){
   const result=[];
@@ -28,7 +28,7 @@ export function fromTree(value){
     if(n.type==='li'){
       const line=n.children.find(c=>c.type==='lic');
       if(!line)throw Error('节点内容无效');
-      result.push({id:n.id,content:fromInline(line.children),children:fromTree(n.children.filter(c=>c.type==='ul'||c.type==='ol'))});
+      result.push({id:n.id,content:fromInline(line.children),...('todoState'in n?{todoState:n.todoState}:{}),children:fromTree(n.children.filter(c=>c.type==='ul'||c.type==='ol'))});
     }else if(n.type==='p')result.push({id:n.id,content:fromInline(n.children),children:[]});
     else throw Error('请使用大纲子节点');
   }
@@ -53,13 +53,13 @@ export class Autosave {
     this.running=(async()=>{
       try{
         const value=await this.send(request);if(!this.alive)return;
-        this.revision=value.revision;this.saved=JSON.stringify(request.nodes);this.pending=null;this.onSaved(value);
+        this.revision=value.revision;this.saved=JSON.stringify(request.nodes);this.pending=null;this.locked=value.status==='adopting';this.onSaved(value);
         this.onState(JSON.stringify(this.current)===this.saved?'saved':'unsaved');
       }catch(error){if(!this.alive)return;if(error.status===409){this.conflict=true;this.onState('conflict',error);}else this.onState('error',error);}
     })();
     await this.running;this.running=null;
     if(!this.alive||this.pending||this.conflict)return false;
-    if(JSON.stringify(this.current)!==this.saved)return this.flush();
+    if(JSON.stringify(this.current)!==this.saved){if(this.locked){this.conflict=true;this.onState('conflict');return false;}return this.flush();}
     return true;
   }
   dispose(){this.alive=false;clearTimeout(this.timer);}
