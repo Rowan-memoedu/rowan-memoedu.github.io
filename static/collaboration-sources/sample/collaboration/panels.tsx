@@ -2,7 +2,7 @@
  * No mock discussion store or browser persistence. See upstream manifests. */
 import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {MessageSquareTextIcon,PencilIcon,ArrowUpIcon,AtSignIcon,BellIcon,CheckIcon,XIcon} from 'lucide-react';
+import {MessageSquareTextIcon,PencilIcon,ArrowUpIcon,AtSignIcon,BellIcon,CheckIcon,XIcon,SettingsIcon} from 'lucide-react';
 import {Button} from '../upstream/collaboration/plate/components/ui/button';
 import {Avatar,AvatarFallback} from '../upstream/collaboration/plate/components/ui/avatar';
 import {Popover,PopoverContent,PopoverTrigger} from './popover';
@@ -76,7 +76,7 @@ function NodeDiscussion({api,target,data,refresh,highlight,onClose,beforeSend,le
   return <>{error&&<p role="status" className="collaboration-error">{error} <button type="button" onClick={()=>void reload().catch(()=>{})}>重试</button></p>}{current?<DiscussionPanel api={api} {...target} data={current} legacyProposalId={legacyProposalId} legacyNodeId={legacyNodeId} refresh={async()=>{if(!local)await reload();await refresh();}} highlight={highlight} onClose={onClose} beforeSend={target.proposalId?beforeSend:undefined}/>:!error&&<p role="status">正在加载批注…</p>}</>;
 }
 
-export function Actions({api,anchorId,entry,onEdit,onOpen,openKey,data,refresh,highlight,canEdit=true}:any){
+export function Actions({api,anchorId,entry,onEdit,onOpen,onPermissions,openKey,data,refresh,highlight,canEdit=true}:any){
   const [open,setOpen]=useState(false),[error,setError]=useState('');
   useEffect(()=>{if(openKey)setOpen(true);},[openKey]);
   return <><Popover open={open} onOpenChange={value=>{setOpen(value);if(value){setError('');void onOpen().catch((e:any)=>setError(e.message));}}}>
@@ -85,6 +85,7 @@ export function Actions({api,anchorId,entry,onEdit,onOpen,openKey,data,refresh,h
       {error?<p role="status" className="p-4">{error}</p>:data?<DiscussionPanel api={api} anchorId={anchorId} data={data} refresh={refresh} highlight={highlight} onClose={()=>setOpen(false)}/>:<p className="p-4" role="status">正在加载批注…</p>}
     </PopoverContent></Popover>
     {canEdit&&<button type="button" className="collaboration-action collaboration-transient" aria-label="编辑节点" onClick={()=>{setError('');void onEdit().catch((e:any)=>setError(e.message));}}><PencilIcon/></button>}
+    {onPermissions&&<button type="button" className="collaboration-action collaboration-transient" aria-label="权限设置" title="权限设置" onClick={onPermissions}><SettingsIcon/></button>}
     {error&&!open&&<span role="status" className="text-xs text-destructive">{error}</span>}</>;
 }
 

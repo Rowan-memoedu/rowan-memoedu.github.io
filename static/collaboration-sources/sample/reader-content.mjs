@@ -51,7 +51,7 @@ export function createReaderContent({window:win=window}={}){
   }
   function setBase(source){base=source.cloneNode(true);reindex();}
   return {clone,project,setLayer,setBase,publish,
-    available(id){const node=index.get(id);return !!node&&!node.closest('[data-content-state="unavailable"]');},
+    available(id){const node=index.get(id);return !!node&&node.dataset.accessContainer!=='true'&&!node.closest('[data-content-state="unavailable"],[data-access-hidden="true"]');},
     setLoader(value){loader=value;},
     async refreshNode(id,{beforePublish}={}){if(loader)await loader();if(!index.has(id))throw Error('正式节点尚未出现在当前页面');beforePublish?.();publish([id]);},
     get size(){return index.size;}

@@ -1,6 +1,7 @@
 import {createInvitationSession} from './invitation-session.mjs';
 import {createReaderContent} from './reader-content.mjs';
 import {createReaderDelivery} from './reader-delivery.mjs';
+import {attachDocumentPermissions} from './document-permissions.mjs';
 
 /** Authentication UI. Once delivered, contents belong to the ordinary reader. */
 export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}={}){
@@ -38,6 +39,19 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
     errorDialog.querySelector('[role=status]').textContent=error.message;show(errorDialog);
   };
   const load=()=>{updateAuthUI();reading=delivery.load().then(result=>{if(result)hide(errorDialog);return result;}).catch(report);return reading;};
+  let refreshingAccess=null;
+  const refreshAccess=()=>refreshingAccess??=(async()=>{
+    win.dispatchEvent(new win.CustomEvent('personal-access-changing'));
+    delivery.clear();await load();win.dispatchEvent(new win.CustomEvent('personal-access-changed'));
+  })().finally(()=>{refreshingAccess=null;});
+  const permissions=attachDocumentPermissions({window:win,session,refresh:refreshAccess});
+  let checkingAccess=false;
+  const checkAccess=async()=>{
+    if(checkingAccess||!session.authenticated||session.user?.role==='reader'||doc.visibilityState==='hidden')return;
+    checkingAccess=true;
+    try{const value=await(await session.request('/document-permissions')).json();if(delivery.accessRevision!==null&&value.revision!==delivery.accessRevision)await refreshAccess();}catch{}finally{checkingAccess=false;}
+  };
+  const accessTimer=win.setInterval(()=>void checkAccess(),5000);win.addEventListener('pagehide',()=>win.clearInterval(accessTimer),{once:true});win.addEventListener('focus',()=>void checkAccess());
   errorDialog.querySelector('[data-retry]').onclick=async()=>{hide(errorDialog);if(session.status==='unavailable')await session.restore();await load();};
   session.subscribe(()=>{
     delivery.clear();hide(errorDialog);
@@ -79,6 +93,6 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
   win.addEventListener('hashchange',focused);win.addEventListener('popstate',focused);
   win.addEventListener('personal-outline-focus-changed',focused);
   void session.ready.then(()=>{if(session.authenticated)void load();focused();});
-  return {content,open,dialog,showLogin,request:session.request,wipe:session.clear,
+  return {content,open,dialog,showLogin,openPermissions:permissions.open,refreshAccess,request:session.request,wipe:session.clear,
     get ready(){return ready();},get status(){return session.status;},get user(){return session.user;},get epoch(){return session.epoch;},get authenticated(){return session.authenticated;}};
 }

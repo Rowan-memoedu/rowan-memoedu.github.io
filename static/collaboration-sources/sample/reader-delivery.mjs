@@ -5,12 +5,12 @@ import {parseReaderMarkup} from './reader-markup.mjs';
 /** Access/transport boundary. It delivers nodes; it never renders a view. */
 export function createReaderDelivery({window:win,session,content,fetcher=fetch}){
   const doc=win.document,purifier=DOMPurify(win),root=doc.querySelector('.reading-outline');
-  let epoch=0,controller=null,task=null,refreshTask=null,urls=new Set(),state='idle';const assetCache=new Map();
+  let epoch=0,controller=null,task=null,refreshTask=null,urls=new Set(),state='idle',accessRevision=null;const assetCache=new Map();
   const cancelled=()=>Object.assign(Error('内容读取已取消'),{name:'AbortError'});
   const revoke=values=>{for(const url of values)win.URL.revokeObjectURL(url);};
   function clear(){
     epoch++;controller?.abort();controller=null;task=null;refreshTask=null;state='idle';
-    content.setLayer('authorized',[]);revoke(urls);urls=new Set();assetCache.clear();
+    content.setLayer('authorized',[]);revoke(urls);urls=new Set();assetCache.clear();accessRevision=null;
   }
   function load({render=true,force=false,publication=root?.dataset.publicationVersion}={}){
     if(!root||!session.authenticated||session.user?.role==='reader')return Promise.resolve(false);
@@ -34,7 +34,7 @@ export function createReaderDelivery({window:win,session,content,fetcher=fetch})
           for(const element of node.querySelectorAll('[data-private-asset]')){
             const asset=element.dataset.privateAsset;
             if(!/^[a-f0-9]{64}\.[a-z0-9]{1,8}$/u.test(asset))throw Error('文件响应无效');
-            if(!assets.has(asset))assets.set(asset,{owner:item.id,elements:[]});assets.get(asset).elements.push(element);
+            if(!assets.has(asset))assets.set(asset,{owner:element.dataset.privateOwner??item.id,elements:[]});assets.get(asset).elements.push(element);
           }
           nodes.push(node);
         }
@@ -50,7 +50,7 @@ export function createReaderDelivery({window:win,session,content,fetcher=fetch})
         if(!valid())throw cancelled();
         for(const url of created)urls.add(url);
         for(const [asset,{elements}] of assets)assetCache.set(payload.version+':'+asset,elements[0].getAttribute(elements[0].tagName==='IMG'?'src':'href'));
-        content.setLayer('authorized',nodes,{render,graph:payload.graph});state='ready';
+        content.setLayer('authorized',nodes,{render,graph:payload.graph});state='ready';accessRevision=payload.accessRevision??null;
         return true;
       }catch(error){revoke(created);if(valid())state='error';throw error;}
       finally{if(generation===epoch){task=null;controller=null;}}
@@ -71,5 +71,5 @@ export function createReaderDelivery({window:win,session,content,fetcher=fetch})
     if(refreshTask)return refreshTask;
     const current=refresh().finally(()=>{if(refreshTask===current)refreshTask=null;});refreshTask=current;return current;
   });
-  return {load,clear,get state(){return state;},get ready(){return task??Promise.resolve();}};
+  return {load,clear,get accessRevision(){return accessRevision;},get state(){return state;},get ready(){return task??Promise.resolve();}};
 }

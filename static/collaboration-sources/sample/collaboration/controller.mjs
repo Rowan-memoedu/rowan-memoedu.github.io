@@ -45,7 +45,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
       try{const next=await api.get('inbox?offset='+inbox.nextOffset);const unique=new Map([...inbox.items,...next.items].map(n=>[n.id,n]));inbox={...next,items:[...unique.values()]};renderBell();}catch(e){noticeError=e.message;renderBell();}
     }});
   }
-  function actionProps(a){return {api,anchorId:a.id,entry:index[a.id],data:a.data,canEdit:a.data?.canEdit??a.canEdit,onEdit:()=>add(a,'outline'),onOpen:()=>load(a),refresh:()=>load(a,true),openKey:a.openKey,highlight:a.target?.sourceId};}
+  function actionProps(a){return {api,anchorId:a.id,entry:index[a.id],data:a.data,canEdit:a.data?.canEdit??a.canEdit,onPermissions:a.node.dataset.documentAccess==='internal'&&user?.role!=='reader'?()=>session.openPermissions?.(a.id):undefined,onEdit:()=>add(a,'outline'),onOpen:()=>load(a),refresh:()=>load(a,true),openKey:a.openKey,highlight:a.target?.sourceId};}
   function groupProps(a){return {api,anchorId:a.id,data:a.data,commentCounts:index,refresh:()=>load(a,true),onAccepted:proposal=>restore(a,proposal),registerSave,notificationTarget:a.target,nativeMarkup:a.nativeMarkup,nativeMetadata:a.nativeMetadata,titleClasses:[...((a.editNode??a.node).querySelector(':scope > .node-content')?.classList??[])].filter(c=>c.startsWith('document-title')).join(' ')};}
   function render(a){
     if(!a.node.isConnected)return;
@@ -260,6 +260,8 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     }}
   }
   win.addEventListener('personal-session-changed',()=>void start());
+  win.addEventListener('personal-access-changing',clear);
+  win.addEventListener('personal-access-changed',()=>void start());
   win.addEventListener('personal-outline-changed',scheduleScan);
   win.addEventListener('personal-outline-focus-changed',scheduleScan);
   doc.addEventListener('visibilitychange',()=>{if(doc.visibilityState==='visible'){if(session.authenticated&&!api)void start();else void poll();}});
