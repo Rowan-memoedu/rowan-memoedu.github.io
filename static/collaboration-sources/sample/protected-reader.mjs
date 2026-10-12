@@ -5,8 +5,10 @@ export {attachProtectedReader};
 if(typeof window!=='undefined'){
   const start=async()=>{
     const response=await fetch('/static/private-backend.json',{credentials:'omit',cache:'no-store'});
-    if(!response.ok)return;const config=await response.json();const reader=attachProtectedReader({apiBase:config.apiBase});attachSearchPreview(reader);
+    if(!response.ok)throw Error('读取登录配置失败');const config=await response.json();const reader=attachProtectedReader({apiBase:config.apiBase});attachSearchPreview(reader);
     const {attachCollaboration}=await import('./collaboration/controller.mjs');attachCollaboration(reader);
+    if(document.getElementById('workspace-root')){const {attachWorkspace}=await import('./workspace/app');attachWorkspace(reader);}
   };
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>void start());else void start();
+  const run=()=>void start().catch(()=>{const workspace=document.getElementById('workspace-root');if(workspace){workspace.replaceChildren();const message=document.createElement('p');message.setAttribute('role','alert');message.textContent='Workspace 暂时无法加载，请刷新重试。';workspace.append(message);}});
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run);else run();
 }

@@ -1,0 +1,81 @@
+{
+  "schema": "pinned-upstream-v1",
+  "commit": "3d63cdb15b79d972e3dc38a10997987672f9b263",
+  "sources": [
+    {
+      "path": "license.md",
+      "url": "https://raw.githubusercontent.com/shadcnblocks/kibo/3d63cdb15b79d972e3dc38a10997987672f9b263/license.md",
+      "sha256": "1fe9198b595ddadef7e2d99e3e1698c036db61c81e91c7b42df90d59f563b2ba"
+    },
+    {
+      "path": "packages/kanban/index.tsx",
+      "url": "https://raw.githubusercontent.com/shadcnblocks/kibo/3d63cdb15b79d972e3dc38a10997987672f9b263/packages/kanban/index.tsx",
+      "sha256": "b309faba8ef25135ff9ef77d39f91f309a686dc2f7895166f9449bf0cc107cdf"
+    },
+    {
+      "path": "packages/kanban/package.json",
+      "url": "https://raw.githubusercontent.com/shadcnblocks/kibo/3d63cdb15b79d972e3dc38a10997987672f9b263/packages/kanban/package.json",
+      "sha256": "a3da67aa8fbeac512107771d4884888bd86212a55721704e566b2cb18d3de88b"
+    },
+    {
+      "path": "packages/calendar/index.tsx",
+      "url": "https://raw.githubusercontent.com/shadcnblocks/kibo/3d63cdb15b79d972e3dc38a10997987672f9b263/packages/calendar/index.tsx",
+      "sha256": "e5ae166bf9627e7847924c913c0240a16b3a0199ddb55713cec39d79ecae858d"
+    },
+    {
+      "path": "packages/calendar/package.json",
+      "url": "https://raw.githubusercontent.com/shadcnblocks/kibo/3d63cdb15b79d972e3dc38a10997987672f9b263/packages/calendar/package.json",
+      "sha256": "0dbca6957006cb7542b65cccf5c4eea564c97fae664c18e0547e7de88416c3fb"
+    },
+    {
+      "path": "packages/gantt/index.tsx",
+      "url": "https://raw.githubusercontent.com/shadcnblocks/kibo/3d63cdb15b79d972e3dc38a10997987672f9b263/packages/gantt/index.tsx",
+      "sha256": "ff06b4de80b119f88633f8e885a3067d4db8c3dc3a192d253de750adecec69fc"
+    },
+    {
+      "path": "packages/gantt/package.json",
+      "url": "https://raw.githubusercontent.com/shadcnblocks/kibo/3d63cdb15b79d972e3dc38a10997987672f9b263/packages/gantt/package.json",
+      "sha256": "6c64a0381d1bda69e944d24598f275d77e10136329d025f489d579bc5c00a925"
+    },
+    {
+      "path": "packages/shadcn-ui/components/ui/card.tsx",
+      "url": "https://raw.githubusercontent.com/shadcnblocks/kibo/3d63cdb15b79d972e3dc38a10997987672f9b263/packages/shadcn-ui/components/ui/card.tsx",
+      "sha256": "1c0537a8fa6adb76a9a275b8c569a744b92fa70fd1edbdca05d3b7234923be1a"
+    },
+    {
+      "path": "packages/shadcn-ui/components/ui/scroll-area.tsx",
+      "url": "https://raw.githubusercontent.com/shadcnblocks/kibo/3d63cdb15b79d972e3dc38a10997987672f9b263/packages/shadcn-ui/components/ui/scroll-area.tsx",
+      "sha256": "e7d38bb90960e5cd95069bb0ced0177d4284a7d029a65171ac5772b6ab42ff46"
+    },
+    {
+      "path": "packages/shadcn-ui/components/ui/button.tsx",
+      "url": "https://raw.githubusercontent.com/shadcnblocks/kibo/3d63cdb15b79d972e3dc38a10997987672f9b263/packages/shadcn-ui/components/ui/button.tsx",
+      "sha256": "208d8cf515ccd73c1ca0030a11de1ba460a9fcd6c83faafeadc000833790d22e"
+    },
+    {
+      "path": "packages/shadcn-ui/components/ui/command.tsx",
+      "url": "https://raw.githubusercontent.com/shadcnblocks/kibo/3d63cdb15b79d972e3dc38a10997987672f9b263/packages/shadcn-ui/components/ui/command.tsx",
+      "sha256": "53be7fe88f0ddbb2f6d97c64c07c1b4816050494880a582c92c0c3c62117b03c"
+    },
+    {
+      "path": "packages/shadcn-ui/components/ui/popover.tsx",
+      "url": "https://raw.githubusercontent.com/shadcnblocks/kibo/3d63cdb15b79d972e3dc38a10997987672f9b263/packages/shadcn-ui/components/ui/popover.tsx",
+      "sha256": "381c7e91747142d14b87efaf6211707c348aa090ba3c843001f4c99ede32e27b"
+    },
+    {
+      "path": "packages/shadcn-ui/components/ui/dialog.tsx",
+      "url": "https://raw.githubusercontent.com/shadcnblocks/kibo/3d63cdb15b79d972e3dc38a10997987672f9b263/packages/shadcn-ui/components/ui/dialog.tsx",
+      "sha256": "c7d128632214c9c78706a91a0616659ecf3be5119492b2ca66607bd83901b802"
+    },
+    {
+      "path": "packages/shadcn-ui/components/ui/context-menu.tsx",
+      "url": "https://raw.githubusercontent.com/shadcnblocks/kibo/3d63cdb15b79d972e3dc38a10997987672f9b263/packages/shadcn-ui/components/ui/context-menu.tsx",
+      "sha256": "0d7f980270dce060c1ab32b4116f15c247a8238f2adafcb661980e4a9d6e95a1"
+    },
+    {
+      "path": "packages/shadcn-ui/lib/utils.ts",
+      "url": "https://raw.githubusercontent.com/shadcnblocks/kibo/3d63cdb15b79d972e3dc38a10997987672f9b263/packages/shadcn-ui/lib/utils.ts",
+      "sha256": "7c8c3dfc0cdd370d44932828eb067ef771c8fe7996693221d5d4b90af6d54f2d"
+    }
+  ]
+}
