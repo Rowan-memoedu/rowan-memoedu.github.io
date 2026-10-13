@@ -16,6 +16,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
   function clear(){
     epoch++;scanQueued=null;user=null;api=null;win.clearInterval(timer);timer=null;win.clearTimeout(pendingTimer);pendingTimer=null;observer?.disconnect();observer=null;refreshing=null;
     startError?.remove();startError=null;
+    for(const entry of doc.querySelectorAll('[data-edit-review-entry]'))entry.hidden=true;
     bell?.dispose();bell=null;bellHost?.remove();bellHost=null;
     for(const a of anchors.values()){win.clearTimeout(a.syncTimer);a.actions?.dispose();a.group?.dispose();a.editGroup?.dispose();a.actionHost?.remove();a.groupHost?.remove();a.editHost?.remove();restoreNative(a);cleanContainer(a);}
     anchors.clear();savers.clear();restored.clear();index={};inbox={items:[],unreadCount:0,version:0,nextOffset:null};
@@ -244,6 +245,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
       await session.ready;if(generation!==epoch||!session.authenticated)return;
       uiPromise??=loadUI().catch(error=>{uiPromise=null;throw error;});UI??=await uiPromise;if(generation!==epoch)return;
       api=createCollaborationClient(session,{guard:()=>{if(generation!==epoch)throw cancelled();}});user=await api.get('session');api.user=user;
+      for(const entry of doc.querySelectorAll('[data-edit-review-entry]'))entry.hidden=!(user.owner||user.role==='member');
       bellHost=doc.createElement('span');bellHost.className='collaboration-ui';(doc.querySelector('.site-header-inner')??doc.body).append(bellHost);
       bell=UI.mount(bellHost,UI.Bell,{inbox,onOpen:()=>poll(),onJump:jump,onMore:()=>{}});
       observer=new win.MutationObserver(records=>{if(sourceChanged(records))scheduleScan();});const root=doc.querySelector('.reading-outline');if(root)observer.observe(root,{childList:true,subtree:true});

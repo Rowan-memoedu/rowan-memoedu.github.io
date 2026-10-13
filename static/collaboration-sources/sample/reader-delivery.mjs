@@ -3,23 +3,22 @@ import {parseProtectedDocument} from './protected-document.mjs';
 import {parseReaderMarkup} from './reader-markup.mjs';
 
 /** Access/transport boundary. It delivers nodes; it never renders a view. */
-export function createReaderDelivery({window:win,session,content,fetcher=fetch}){
+export function createReaderDelivery({window:win,session,content,fetcher=fetch,onResources=()=>{}}){
   const doc=win.document,purifier=DOMPurify(win),root=doc.querySelector('.reading-outline');
-  let epoch=0,controller=null,task=null,refreshTask=null,urls=new Set(),state='idle',accessRevision=null;const assetCache=new Map();
+  let epoch=0,controller=null,task=null,refreshTask=null,urls=new Set(),state='idle',accessRevision=null,resourcesTask=null,retryResources=()=>Promise.resolve();const assetCache=new Map();
   const cancelled=()=>Object.assign(Error('内容读取已取消'),{name:'AbortError'});
   const revoke=values=>{for(const url of values)win.URL.revokeObjectURL(url);};
   function clear(){
     epoch++;controller?.abort();controller=null;task=null;refreshTask=null;state='idle';
-    content.setLayer('authorized',[]);revoke(urls);urls=new Set();assetCache.clear();accessRevision=null;
+    content.setLayer('authorized',[]);revoke(urls);urls=new Set();assetCache.clear();accessRevision=null;resourcesTask=null;retryResources=()=>Promise.resolve();onResources(0);
   }
   function load({render=true,force=false,publication=root?.dataset.publicationVersion}={}){
     if(!root||!session.authenticated||session.user?.role==='reader')return Promise.resolve(false);
     const generation=epoch;
     if(task)return force?task.then(()=>{if(generation!==epoch)throw cancelled();return load({render,force,publication});}):task;if(state==='ready'&&!force)return Promise.resolve(true);
-    controller=new AbortController();const signal=controller.signal;state='loading';
+    controller?.abort();resourcesTask=null;controller=new AbortController();const signal=controller.signal;state='loading';
     const valid=()=>generation===epoch&&!signal.aborted&&session.authenticated;
     task=(async()=>{
-      const created=new Set();
       try{
         const payload=await(await session.request('/reader',{signal})).json();
         if(!valid())throw cancelled();
@@ -38,22 +37,39 @@ export function createReaderDelivery({window:win,session,content,fetcher=fetch})
           }
           nodes.push(node);
         }
-        // Resolve resource ownership once, before any consumer can see this snapshot.
+        // Bodies are complete and validated together. Images and attachments
+        // load independently, like ordinary reader resources, never per click.
         for(const [asset,{owner,elements}] of assets){
-          const key=payload.version+':'+asset;let url=assetCache.get(key);
-          if(!url){
-            const blob=await(await session.request('/documents/'+owner+'/assets/'+asset+'?version='+payload.version,{signal})).blob();
-            if(!valid())throw cancelled();url=win.URL.createObjectURL(blob);created.add(url);
-          }
-          for(const element of elements)element.setAttribute(element.tagName==='IMG'?'src':'href',url);
+          const url=assetCache.get(payload.version+':'+asset);
+          for(const element of elements){element.removeAttribute('srcset');element.removeAttribute(element.tagName==='IMG'?'src':'href');if(url)element.setAttribute(element.tagName==='IMG'?'src':'href',url);}
         }
         if(!valid())throw cancelled();
-        for(const url of created)urls.add(url);
-        for(const [asset,{elements}] of assets)assetCache.set(payload.version+':'+asset,elements[0].getAttribute(elements[0].tagName==='IMG'?'src':'href'));
-        content.setLayer('authorized',nodes,{render,graph:payload.graph});state='ready';accessRevision=payload.accessRevision??null;
+        const updateResource=content.setLayer('authorized',nodes,{render,graph:payload.graph});state='ready';accessRevision=payload.accessRevision??null;
+        const resolveResources=async()=>{
+          const pending=[...assets].filter(([asset])=>!assetCache.has(payload.version+':'+asset));let next=0,failed=0;
+          await Promise.all(Array.from({length:Math.min(6,pending.length)},async()=>{
+            while(valid()&&next<pending.length){
+              const [asset,{owner}]=pending[next++];
+              try{
+                const blob=await(await session.request('/documents/'+owner+'/assets/'+asset+'?version='+payload.version,{signal})).blob();
+                if(!valid())return;
+                const url=win.URL.createObjectURL(blob);
+                if(!updateResource(asset,url)){win.URL.revokeObjectURL(url);return;}
+                urls.add(url);assetCache.set(payload.version+':'+asset,url);
+              }catch{if(valid())failed++;}
+            }
+          }));
+          if(valid())onResources(failed);
+        };
+        retryResources=()=>{
+          if(!valid())return Promise.resolve();
+          if(resourcesTask)return resourcesTask;
+          const current=resolveResources().finally(()=>{if(resourcesTask===current)resourcesTask=null;});resourcesTask=current;return current;
+        };
+        onResources(0);void retryResources();
         return true;
-      }catch(error){revoke(created);if(valid())state='error';throw error;}
-      finally{if(generation===epoch){task=null;controller=null;}}
+      }catch(error){if(valid())state='error';throw error;}
+      finally{if(generation===epoch)task=null;}
     })();return task;
   }
   async function refresh(){
@@ -71,5 +87,5 @@ export function createReaderDelivery({window:win,session,content,fetcher=fetch})
     if(refreshTask)return refreshTask;
     const current=refresh().finally(()=>{if(refreshTask===current)refreshTask=null;});refreshTask=current;return current;
   });
-  return {load,clear,get accessRevision(){return accessRevision;},get state(){return state;},get ready(){return task??Promise.resolve();}};
+  return {load,clear,retryResources:()=>retryResources(),get resourcesReady(){return resourcesTask??Promise.resolve();},get accessRevision(){return accessRevision;},get state(){return state;},get ready(){return task??Promise.resolve();}};
 }

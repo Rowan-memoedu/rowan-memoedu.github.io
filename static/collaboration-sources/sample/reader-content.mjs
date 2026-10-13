@@ -7,7 +7,7 @@ export function createReaderContent({window:win=window}={}){
   let base=(root?.personalReaderSource??root)?.cloneNode(true)??doc.createElement('div');
   // Static mounting moved these source-owned sections to the sidebar.
   for(const section of doc.querySelectorAll('[data-document-attachment-sidebar] > .document-attachments'))base.querySelector('#node-'+section.dataset.documentAttachmentsFor)?.append(section.cloneNode(true));
-  const layers=new Map(),graphs=new Map(),baseGraph=win.personalReaderGraph??{documents:{}};let index=new Map(),loader=null;
+  const layers=new Map(),graphs=new Map(),baseGraph=win.personalReaderGraph??{documents:{}};let index=new Map(),loader=null,resourceRoots=[];
   const descendants=node=>[node,...node.querySelectorAll('.outline-node[id]')].filter(node=>node.matches('.outline-node[id]'));
   function reindex(){
     const tree=base.cloneNode(true),external=[];
@@ -17,6 +17,7 @@ export function createReaderContent({window:win=window}={}){
     }
     index=new Map([...tree.querySelectorAll('.outline-node[id]')].map(node=>[node.id,node]));
     for(const node of external)for(const entry of descendants(node))index.set(entry.id,entry);
+    resourceRoots=[tree,...external];
   }
   reindex();
   const clone=id=>index.get(id)?.cloneNode(true)??null;
@@ -48,6 +49,15 @@ export function createReaderContent({window:win=window}={}){
     if(nodes.length)layers.set(name,nodes);else layers.delete(name);
     if(graph)graphs.set(name,graph);else graphs.delete(name);
     reindex();if(render)publish(ids);
+    // Resource completion patches the shared source and its existing views.
+    // It must never replace a tree, reset folding or remount an active editor.
+    return (asset,url)=>{
+      if(layers.get(name)!==nodes)return false;
+      for(const source of [...nodes,...resourceRoots,doc])for(const element of source.querySelectorAll('[data-private-asset="'+asset+'"]')){
+        element.setAttribute(element.tagName==='IMG'?'src':'href',url);
+      }
+      return true;
+    };
   }
   function setBase(source){base=source.cloneNode(true);reindex();}
   return {clone,project,setLayer,setBase,publish,

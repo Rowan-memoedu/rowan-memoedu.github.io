@@ -7,7 +7,10 @@ import {attachDocumentPermissions} from './document-permissions.mjs';
 export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}={}){
   const doc=win.document,root=doc.querySelector('.reading-outline')??doc.body;
   const session=createInvitationSession({window:win,apiBase,fetcher});
-  const content=createReaderContent({window:win}),delivery=createReaderDelivery({window:win,session,content,fetcher});
+  const resourceNotice=doc.createElement('span');resourceNotice.hidden=true;resourceNotice.setAttribute('role','status');
+  const resourceRetry=doc.createElement('button');resourceRetry.type='button';resourceRetry.textContent='重试加载附件';resourceNotice.append('部分图片或附件暂未加载。',resourceRetry);
+  const content=createReaderContent({window:win}),delivery=createReaderDelivery({window:win,session,content,fetcher,onResources:failed=>{resourceNotice.hidden=!failed;}});
+  resourceRetry.onclick=async()=>{resourceRetry.disabled=true;try{await delivery.retryResources();}finally{resourceRetry.disabled=false;}};
   const dialog=doc.createElement('dialog');dialog.className='protected-login';
   dialog.innerHTML='<form method="dialog"><p><strong>此页面需登录后查看</strong></p><label>邀请码 <input name="invitation" type="password" autocomplete="off" maxlength="256" required></label><p role="status" aria-live="polite"></p><button type="submit">登录查看</button> <button type="button" data-close>取消</button></form>';
   doc.body.append(dialog);const form=dialog.querySelector('form'),input=form.elements.invitation,status=dialog.querySelector('[role=status]');
@@ -20,6 +23,7 @@ export function attachProtectedReader({window:win=window,apiBase,fetcher=fetch}=
   const showLogin=()=>{if(session.authenticated||['checking','suspended','unavailable'].includes(session.status))return;status.textContent='';show(dialog);input.focus();};
   const button=doc.createElement('button');button.type='button';button.textContent='邀请码登录';
   (doc.querySelector('.site-header-inner')??root.querySelector('.outline-toolbar-tools')??root).append(button);
+  button.after(resourceNotice);
   let pending=null,lastFocus=null,reading=Promise.resolve();
   const notices=new WeakMap();
   function updateAuthUI(){

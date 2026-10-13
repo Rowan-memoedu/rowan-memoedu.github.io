@@ -1,0 +1,13 @@
+/* Hallmark · component: editing review · theme: existing MediaWiki / Plate
+ * pre-emit critique: P4 H4 E4 S5 R5 V4; existing typography and tokens retained. */
+.collaboration-review {min-width:0;overflow-wrap:anywhere;}
+.collaboration-review-toolbar,.collaboration-review-heading {display:flex;align-items:center;flex-wrap:wrap;gap:.75rem;}
+.collaboration-review-toolbar {margin-bottom:1rem;}
+.collaboration-review-toolbar button {white-space:nowrap;}
+.collaboration-review-note {margin-bottom:1rem!important;}
+.collaboration-review-heading {font-size:.875em;}
+.collaboration-review-content {margin-block:.75rem 1.5rem;min-width:0;}
+.collaboration-review-content ul {padding-inline-start:1.25rem;}
+.collaboration-review-content [data-slate-editor] {overflow-wrap:anywhere;}
+.collaboration-review a:focus-visible {outline:2px solid currentColor;outline-offset:3px;}
+.collaboration-review h4 {font-style:normal;overflow-wrap:anywhere;}

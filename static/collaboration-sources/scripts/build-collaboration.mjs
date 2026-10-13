@@ -45,7 +45,7 @@ export async function buildCollaboration(outputDirectory){
     read(path.join(echo,'echo.variables.less')),read(path.join(echo,'echo.mixins.less')),
     ...['nojs/mw.echo.badge.less','styles/mw.echo.ui.NotificationItemWidget.less','styles/mw.echo.ui.NotificationsListWidget.less'].map(f=>strip(read(path.join(echo,f))))
   ].join('\n'),{javascriptEnabled:false});
-  const style=path.join(outputDirectory,'collaboration.css');fs.writeFileSync(style,css.toString()+'\n'+tokens+'\n'+echoCss.css+'\n'+read('sample/collaboration/compatibility.css')+'\n'+read('sample/workspace/compatibility.css'));
+  const style=path.join(outputDirectory,'collaboration.css');fs.writeFileSync(style,css.toString()+'\n'+tokens+'\n'+echoCss.css+'\n'+read('sample/collaboration/compatibility.css')+'\n'+read('sample/collaboration/review.css')+'\n'+read('sample/workspace/compatibility.css'));
   const licenses=path.join(outputDirectory,'collaboration-licenses.txt');
   fs.writeFileSync(licenses,['Plate registry','MIT',read(path.join(plate,'LICENSE')),'dnd-kit core 6.3.1 (https://github.com/clauderic/dnd-kit)',read('node_modules/@dnd-kit/core/LICENSE'),'MediaWiki Echo',read(path.join(root,'echo/COPYING')),'KaTeX',read('node_modules/katex-collaboration/LICENSE'),'Kibo UI',read(path.join(workspace.root,'license.md')),'XYFlow React',read('node_modules/@xyflow/react/LICENSE')].join('\n'));
   return {outputs:[...Object.keys(result.metafile.outputs),style,licenses],metafile:result.metafile};
