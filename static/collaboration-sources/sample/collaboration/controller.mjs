@@ -238,6 +238,27 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
     }
     previous?previous.replaceWith(section):feed.before(section);
   }
+  async function locateEdit(id,proposalId){
+    if(!/^r-(?:[a-f0-9]{2})+$/u.test(id)||user?.role==='reader')return;
+    const generation=epoch,authentication=session.epoch;
+    const check=()=>{if(generation!==epoch||authentication!==session.epoch||!session.authenticated)throw cancelled();};
+    await session.open?.(id);await session.ready;check();
+    const node=doc.getElementById('node-'+id),root=node?.closest('.reading-outline');
+    if(!node||!root?.personalOutlineLocate?.(node.id))throw Error('编辑节点暂不可见，请刷新后重试');
+    scan();const a=ensureAnchor(node);if(!a)return;
+    await load(a);check();
+    const proposal=a.data?.proposals.find(p=>p.id===proposalId);
+    const localId=proposal?.kind==='edit'?proposal.editRootId??proposal.nodes[0]?.id:id;
+    for(let attempt=0;attempt<40;attempt++){
+      check();
+      const group=[...node.querySelectorAll('[data-proposal-id]')].find(el=>el.dataset.proposalId===proposalId);
+      const line=[...(group??a.editHost??node).querySelectorAll('[data-contribution-node]')].find(el=>el.dataset.contributionNode===localId);
+      const target=line??group??node.querySelector(':scope > .node-content');
+      if(target&&visible(target)){target.scrollIntoView({block:'center'});return;}
+      await delay(50);
+    }
+    throw Error('编辑内容暂不可见，请刷新后重试');
+  }
   async function start(){
     if(!session.authenticated){clear();return;}
     clear();const generation=epoch;
@@ -251,8 +272,9 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
       observer=new win.MutationObserver(records=>{if(sourceChanged(records))scheduleScan();});const root=doc.querySelector('.reading-outline');if(root)observer.observe(root,{childList:true,subtree:true});
       scan();await poll();if(generation!==epoch)return;
       timer=win.setInterval(()=>{if(doc.visibilityState!=='hidden')void poll();},15000);
-      const notification=new URL(win.location.href).searchParams.get('notification');
+      const parameters=new URL(win.location.href).searchParams,notification=parameters.get('notification');
       if(notification){const notice=inbox.items.find(n=>n.id===notification)??await api.get('inbox/'+encodeURIComponent(notification));await jump(notice);}
+      else if(parameters.has('edit-node'))await locateEdit(parameters.get('edit-node'),parameters.get('proposal'));
     }catch(e){if(generation===epoch&&e.name!=='AbortError'){
       noticeError=e.message;renderBell();
       if(!bell){

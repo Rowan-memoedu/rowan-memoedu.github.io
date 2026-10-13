@@ -77,7 +77,7 @@ function ReviewApp({reader}:any){
     <div className="mw-changeslist">{[...groups].map(([documentId,entries])=><section key={documentId}>
       <h4><a href={'/blog/#node-'+encodeURIComponent(documentId)}>{entries[0].documentTitle}</a></h4>
       <ul className="special">{entries.map((item:any)=><li key={item.id} className="mw-changeslist-line mw-changeslist-line-not-watched" data-review-proposal={item.id}>
-        <div className="mw-changeslist-line-inner collaboration-review-heading"><a className="mw-changeslist-title" href={'/blog/#node-'+encodeURIComponent(item.anchorId)}>{item.anchorTitle}</a><time dateTime={new Date(item.updatedAt*1000).toISOString()}>{when(item.updatedAt)}</time><span>{item.authorName}</span><span role="status">{progress(item)}</span></div>
+        <div className="mw-changeslist-line-inner collaboration-review-heading"><a className="mw-changeslist-title" href={'/blog/?edit-node='+encodeURIComponent(item.anchorId)+'&proposal='+encodeURIComponent(item.id)}>{item.anchorTitle}</a><time dateTime={new Date(item.updatedAt*1000).toISOString()}>{when(item.updatedAt)}</time><span>{item.authorName}</span><span role="status">{progress(item)}</span></div>
         {skipped.has(item.id)&&<p className="collaboration-error">{String(skipped.get(item.id))}</p>}
         {item.nodes.length>0&&<div className="collaboration-review-content"><RichEditor key={item.id+':'+item.revision} initial={item.nodes} tree preview readOnly label={'编辑内容：'+item.anchorTitle}/></div>}
       </li>)}</ul>
