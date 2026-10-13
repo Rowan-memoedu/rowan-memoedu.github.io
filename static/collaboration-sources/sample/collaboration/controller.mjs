@@ -45,8 +45,8 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
       try{const next=await api.get('inbox?offset='+inbox.nextOffset);const unique=new Map([...inbox.items,...next.items].map(n=>[n.id,n]));inbox={...next,items:[...unique.values()]};renderBell();}catch(e){noticeError=e.message;renderBell();}
     }});
   }
-  function actionProps(a){return {api,anchorId:a.id,entry:index[a.id],data:a.data,canEdit:a.data?.canEdit??a.canEdit,onPermissions:a.node.dataset.documentAccess==='internal'&&user?.role!=='reader'?()=>session.openPermissions?.(a.id):undefined,onEdit:()=>add(a,'outline'),onOpen:()=>load(a),refresh:()=>load(a,true),openKey:a.openKey,highlight:a.target?.sourceId};}
-  function groupProps(a){return {api,anchorId:a.id,data:a.data,commentCounts:index,refresh:()=>load(a,true),onAccepted:proposal=>restore(a,proposal),registerSave,notificationTarget:a.target,nativeMarkup:a.nativeMarkup,nativeMetadata:a.nativeMetadata,titleClasses:[...((a.editNode??a.node).querySelector(':scope > .node-content')?.classList??[])].filter(c=>c.startsWith('document-title')).join(' ')};}
+  function actionProps(a){return {api,anchorId:a.id,entry:index[a.id],data:a.data,canEdit:a.data?.canEdit??a.canEdit,onPermissions:a.node.dataset.documentAccess==='internal'&&['document','dailyDocument'].includes(a.node.dataset.remType)&&user?.role!=='reader'?()=>session.openPermissions?.(a.id):undefined,onEdit:()=>add(a,'outline'),onOpen:()=>load(a),refresh:()=>load(a,true),openKey:a.openKey,highlight:a.target?.sourceId};}
+  function groupProps(a){return {api,anchorId:a.id,data:a.data,commentCounts:index,refresh:()=>load(a,true),onAccepted:proposal=>restore(a,proposal),onPermissions:user?.role!=='reader'?id=>session.openPermissions?.(id):undefined,registerSave,notificationTarget:a.target,nativeMarkup:a.nativeMarkup,nativeMetadata:a.nativeMetadata,titleClasses:[...((a.editNode??a.node).querySelector(':scope > .node-content')?.classList??[])].filter(c=>c.startsWith('document-title')).join(' ')};}
   function render(a){
     if(!a.node.isConnected)return;
     if(a.data?.proposals.some(p=>p.status==='adopting')&&doc.visibilityState!=='hidden'){
@@ -77,7 +77,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
           const cloned=source.cloneNode(true);cloned.querySelectorAll('.collaboration-ui').forEach(el=>el.remove());a.nativeMarkup[nodeId(node)]=cloned.innerHTML;
           const annotation=node.querySelector(':scope > .document-body > .document-annotations > .callout-label')?.cloneNode(true);annotation?.querySelectorAll('button').forEach(el=>el.remove());
           const control=node.querySelector(':scope > .outline-controls .node-focus');
-          a.nativeMetadata[nodeId(node)]={parentReference:node.dataset.parentReference??null,remType:node.dataset.remType,listNumber:node.dataset.listNumber,focusLabel:control?.textContent,bulletColor:control&&win.getComputedStyle(control,'::before').backgroundColor,annotationHeader:annotation?.innerHTML,folded:node.classList.contains('is-folded'),sourceCallout:node.dataset.sourceCallout==='true',calloutType:node.dataset.sourceCalloutType,calloutLabel:node.dataset.sourceCalloutLabel};
+          a.nativeMetadata[nodeId(node)]={parentReference:node.dataset.parentReference??null,remType:node.dataset.remType,documentAccess:node.dataset.documentAccess,listNumber:node.dataset.listNumber,focusLabel:control?.textContent,bulletColor:control&&win.getComputedStyle(control,'::before').backgroundColor,annotationHeader:annotation?.innerHTML,folded:node.classList.contains('is-folded'),sourceCallout:node.dataset.sourceCallout==='true',calloutType:node.dataset.sourceCalloutType,calloutLabel:node.dataset.sourceCalloutLabel};
         }
         const content=a.editNode.querySelector(':scope > .node-content');
         a.editNode.dataset.collaborationEditing='true';

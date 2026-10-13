@@ -11,7 +11,7 @@ import {MentionPlugin,MentionInputPlugin} from '@platejs/mention/react';
 import {getMentionOnSelectItem} from '@platejs/mention';
 import {LinkPlugin} from '@platejs/link/react';
 import {InlineEquationPlugin} from '@platejs/math/react';
-import {MessageSquareTextIcon,SquareIcon,GripVerticalIcon} from 'lucide-react';
+import {MessageSquareTextIcon,SquareIcon,GripVerticalIcon,SettingsIcon} from 'lucide-react';
 import {Editor,EditorContainer} from '../upstream/collaboration/plate/registry/ui/editor';
 import {ParagraphElement} from '../upstream/collaboration/plate/registry/ui/paragraph-node';
 import {MentionElement} from '../upstream/collaboration/plate/registry/ui/mention-node';
@@ -94,7 +94,7 @@ function Item(props:any){
   </PlateElement>;
 }
 function ContributionLine(props:any){
-  const {onComment,onApprove,owner,readOnly,preview,inlineRoot,titleClasses,comments,mutable,outline,nativeMarkup,view}=useContext(Context);
+  const {onComment,onApprove,onPermissions,owner,readOnly,preview,inlineRoot,titleClasses,comments,mutable,outline,nativeMarkup,nativeMetadata,view}=useContext(Context);
   const path=props.editor.api.findPath(props.element),itemPath=path?.slice(0,-1),parent=itemPath?props.editor.api.node(itemPath)?.[0]:null;
   const count=comments?.[parent?.id]??0;
   const editable=mutable?.(parent?.id)??true;
@@ -107,6 +107,7 @@ function ContributionLine(props:any){
     {!preview&&<span contentEditable={false} className="collaboration-row-actions" onMouseDown={e=>e.preventDefault()}>
       {owner&&editable&&<button type="button" className="collaboration-action collaboration-transient" role="checkbox" aria-checked="false" aria-label="采纳此节点及子树" disabled={readOnly||!canApprove} title={!canApprove?'父节点尚未采纳，请采纳其父级子树':'采纳此节点及其子树'} onClick={()=>onApprove?.(parent.id)}><SquareIcon/></button>}
       <button type="button" className={'collaboration-action '+(count?'collaboration-comment-existing':'collaboration-transient')} aria-label={count?`查看 ${count} 条子节点批注`:'批注此子节点'} onClick={()=>onComment?.(parent.id)}><MessageSquareTextIcon/>{count>0&&<span>{count}</span>}</button>
+      {onPermissions&&nativeMetadata[parent?.id]?.documentAccess==='internal'&&['document','dailyDocument'].includes(nativeMetadata[parent.id].remType)&&<button type="button" className="collaboration-action collaboration-transient" aria-label="权限设置" title="权限设置" onClick={()=>onPermissions(parent.id)}><SettingsIcon/></button>}
     </span>}
   </PlateElement>;
 }
@@ -114,7 +115,7 @@ function Strong(props:any){return <PlateLeaf {...props} as="strong"/>;}
 function Em(props:any){return <PlateLeaf {...props} as="em"/>;}
 function Code(props:any){return <PlateLeaf {...props} as="code"/>;}
 
-export function RichEditor({initial,tree=false,inlineRoot=false,outline=null,nativeMarkup={},nativeMetadata={},titleClasses='',preview=false,readOnly=false,users=[],onChange,onEmpty,onComment,onApprove,owner=false,comments={},editorRef,placeholder='',label='协作编辑器',onSubmit}:any){
+export function RichEditor({initial,tree=false,inlineRoot=false,outline=null,nativeMarkup={},nativeMetadata={},titleClasses='',preview=false,readOnly=false,users=[],onChange,onEmpty,onComment,onApprove,onPermissions,owner=false,comments={},editorRef,placeholder='',label='协作编辑器',onSubmit}:any){
   const mutable=(id:string)=>!outline||!outline.originalIds.includes(id)||outline.editableIds.includes(id);
   const sensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:6}}),useSensor(KeyboardSensor));
   const plugins=useMemo(()=>[
@@ -263,7 +264,7 @@ export function RichEditor({initial,tree=false,inlineRoot=false,outline=null,nat
     });
     editor.tf.select(ref?.unref()??editor.api.start([]));editor.tf.focus();
   }
-  return <Context.Provider value={{users,onComment,onApprove,owner,readOnly,preview,inlineRoot,titleClasses,comments,outline,mutable,nativeMarkup,nativeMetadata,view}}><DndContext sensors={sensors} collisionDetection={collisions} onDragStart={dragStart} onDragEnd={dragEnd} onDragCancel={()=>setDragView(null)}><Plate editor={editor} readOnly={readOnly} onValueChange={changed}>
+  return <Context.Provider value={{users,onComment,onApprove,onPermissions,owner,readOnly,preview,inlineRoot,titleClasses,comments,outline,mutable,nativeMarkup,nativeMetadata,view}}><DndContext sensors={sensors} collisionDetection={collisions} onDragStart={dragStart} onDragEnd={dragEnd} onDragCancel={()=>setDragView(null)}><Plate editor={editor} readOnly={readOnly} onValueChange={changed}>
     <Popover open={linkOpen} onOpenChange={setLinkOpen}><PopoverAnchor asChild><EditorContainer className={tree?'collaboration-outline-editor':'collaboration-comment-editor'} variant="default" data-collaboration-tree={tree?'':undefined}>
       <Editor variant="none" aria-label={label} placeholder={placeholder} onFocus={()=>{if(tree&&!editor.selection)selectVisibleEdge();}} onKeyDownCapture={keydown} onCompositionStart={()=>{composing.current=true;}} onCompositionEnd={()=>{composing.current=false;queueMicrotask(changed);}} onPaste={e=>{if(e.clipboardData.files.length){e.preventDefault();setError('暂不支持图片或附件');}}}/>
     </EditorContainer></PopoverAnchor><PopoverContent aria-label="插入链接" className="collaboration-link-dialog"><form onSubmit={e=>{e.preventDefault();try{const target=new URL(url);if(!['http:','https:','mailto:'].includes(target.protocol))throw Error('请输入有效链接');if(linkSelection.current)editor.tf.select(linkSelection.current);const text=editor.api.string(editor.selection) || url;editor.tf.insertNodes({type:'a',url,children:[{text}]});setLinkOpen(false);editor.tf.focus();}catch{setError('请输入 http、https 或 mailto 链接');}}}><label>链接地址<input autoFocus required value={url} onChange={e=>setUrl(e.target.value)}/></label><Button type="submit" size="sm">插入</Button></form></PopoverContent></Popover>
