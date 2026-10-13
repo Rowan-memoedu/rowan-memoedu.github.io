@@ -139,7 +139,7 @@ export function attachCollaboration(session,{window:win=window,loadUI=()=>import
       }
       const state=JSON.stringify([index[id]??null,user?.id,user?.name,user?.owner,user?.role]);
       if(a.renderState!==state){a.renderState=state;render(a);}
-      if(index[id]?.proposals&&visible(node)&&!a.data&&!a.loading)void load(a).catch(()=>{});
+      if((index[id]?.proposals||index[id]?.updates)&&visible(node)&&!a.data&&!a.loading)void load(a).catch(()=>{});
     }
   }
   function ensureAnchor(node){

@@ -9,6 +9,7 @@ import {TaskBoard,TaskCalendar,TaskTimeline} from './views';
 import {TaskDetail} from './task-detail';
 import {createCollaborationClient} from '../collaboration/client.mjs';
 import {taskHierarchy} from './hierarchy.mjs';
+import {optimisticSnapshot} from './optimistic.mjs';
 
 function Modal({title,onClose,busy,children}){
   const ref=useRef(null),id=useId();
@@ -60,12 +61,14 @@ function ProjectSettings({snapshot,people,mutate,busy,onClose}){
 function WorkspaceApp({reader}){
   const api=useMemo(()=>createWorkspaceClient(reader),[]);
   const collaboration=useMemo(()=>createCollaborationClient(reader),[]);
-  const [projects,setProjects]=useState([]),[people,setPeople]=useState([]),[selected,setSelected]=useState(''),[snapshot,setSnapshot]=useState(null);
+  const [projects,setProjects]=useState([]),[people,setPeople]=useState([]),[selected,setSelected]=useState(''),[storedSnapshot,setSnapshot]=useState(null),[pending,setPending]=useState([]);
+  const snapshot=optimisticSnapshot(storedSnapshot,pending);
   const [loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
   const [title,setTitle]=useState(''),[view,setView]=useState('list'),[detail,setDetail]=useState(null),[settings,setSettings]=useState(false),[create,setCreate]=useState(false),[projectName,setProjectName]=useState('');
   const [filter,setFilter]=useState('all'),[archive,setArchive]=useState(false);
   const alive=useRef(true),lock=useRef(false),current=useRef(null),selectedRef=useRef(''),sequence=useRef(0);
-  current.current=snapshot;selectedRef.current=selected;
+  const queue=useRef(Promise.resolve()),requests=useRef(0),blocking=useRef(0),known=useRef(new Map());
+  current.current=storedSnapshot;selectedRef.current=selected;
   const clearProject=()=>{setSnapshot(null);setSelected('');setDetail(null);setSettings(false);setTitle('');};
   const loadIndex=useCallback(async()=>{
     const result=await api.get('projects');if(alive.current)setProjects(result.projects);return result.projects;
@@ -73,7 +76,8 @@ function WorkspaceApp({reader}){
   const loadProject=useCallback(async(id,incremental=false)=>{
     const round=++sequence.current,revision=incremental&&current.current?.projectId===id?current.current.revision:null;
     const result=await api.get('projects/'+id+(revision?'?since='+revision:''));
-    if(alive.current&&selectedRef.current===id&&round===sequence.current&&!result.unchanged)setSnapshot(result);
+    if(!result.unchanged&&(!known.current.has(id)||result.revision>=known.current.get(id).revision))known.current.set(id,result);
+    if(alive.current&&selectedRef.current===id&&round===sequence.current&&!result.unchanged){current.current=result;setSnapshot(result);}
     return result;
   },[api]);
   const report=error=>{
@@ -104,29 +108,48 @@ function WorkspaceApp({reader}){
     const timer=setInterval(poll,5000);window.addEventListener('focus',poll);
     return()=>{clearInterval(timer);window.removeEventListener('focus',poll);};
   },[selected]);
-  async function mutate(route,fields,global=false){
-    if(lock.current)throw Error('上一项操作尚未完成，请稍候');
-    lock.current=true;setBusy(true);setError('');setNotice('');
-    const id=selectedRef.current;
-    try{
-      const result=await api.post(route,{...(!global?{projectId:id}:{}),...fields});
-      if(!alive.current)return result;
-      try{if(id&&selectedRef.current===id)await loadProject(id);await loadIndex();}
-      catch(refreshError){report(refreshError);}
-      if(alive.current)setNotice('已保存');return result;
-    }catch(e){report(e);if(e.status===409&&id&&selectedRef.current===id)void loadProject(id).catch(report);throw e;}
-    finally{lock.current=false;if(alive.current)setBusy(false);}
+  function mutate(route,fields,global=false,immediate=false){
+    const id=selectedRef.current,request=crypto.randomUUID();
+    requests.current++;lock.current=true;sequence.current++;setError('');setNotice('');
+    if(!immediate){blocking.current++;setBusy(true);}
+    if(immediate)setPending(items=>[...items,{id:request,projectId:id,taskId:fields.taskId,fields:route==='tasks/move'?{status:fields.status}:fields.fields}]);
+    const perform=async()=>{
+      try{
+        let sent=fields;
+        if(immediate){
+          const basis=known.current.get(id),task=basis?.tasks.find(item=>item.id===fields.taskId);
+          if(task)sent={...fields,revision:task.revision,...(route==='tasks/move'?{projectRevision:basis.revision}:{})};
+        }
+        const result=await api.post(route,{...(!global?{projectId:id}:{}),...sent});
+        if(!alive.current)return result;
+        if(result.snapshot){
+          known.current.set(result.projectId,result.snapshot);
+          if(selectedRef.current===result.projectId){sequence.current++;current.current=result.snapshot;setSnapshot(result.snapshot);}
+          const active=result.snapshot.tasks.filter(task=>task.todoEnabled&&!task.archived);
+          setProjects(items=>items.map(project=>project.id===result.projectId?{...project,...result.snapshot.project,total:active.length,completed:active.filter(task=>task.status==='done').length}:project));
+        }
+        void loadIndex().catch(()=>{});setNotice('已保存');return result;
+      }catch(e){
+        report(e);
+        if((e.status===409||!e.status)&&e.name!=='AbortError'&&id&&selectedRef.current===id)await loadProject(id).catch(report);
+        throw e;
+      }finally{
+        requests.current--;lock.current=requests.current>0;if(!immediate)blocking.current--;
+        if(alive.current){setBusy(blocking.current>0);setPending(items=>items.filter(item=>item.id!==request));}
+      }
+    };
+    const result=queue.current.then(perform);queue.current=result.catch(()=>{});return result;
   }
   async function createProject(event){
     event.preventDefault();try{const result=await mutate('projects/create',{name:projectName},true);if(alive.current){setCreate(false);setProjectName('');select(result.projectId);}}catch{}
   }
   async function addTask(event){
-    event?.preventDefault();if(!title.trim()||lock.current)return;
+    event?.preventDefault();if(!title.trim()||blocking.current)return;
     try{await mutate('tasks/save',{fields:{title}});if(alive.current)setTitle('');}catch{}
   }
   const shortcut=event=>{if((event.ctrlKey||event.metaKey)&&event.key==='Enter'&&!event.nativeEvent.isComposing&&!event.repeat){event.preventDefault();void addTask();}};
-  const saveTask=(task,fields)=>mutate('tasks/save',{taskId:task.id,revision:task.revision,fields}).catch(()=>{});
-  const moveTask=(task,status,beforeId,projectRevision)=>mutate('tasks/move',{taskId:task.id,revision:task.revision,projectRevision,status,beforeId}).catch(()=>{});
+  const saveTask=(task,fields)=>mutate('tasks/save',{taskId:task.id,revision:task.revision,fields},false,true).catch(()=>{});
+  const moveTask=(task,status,beforeId,projectRevision)=>mutate('tasks/move',{taskId:task.id,revision:task.revision,projectRevision,status,beforeId},false,true).catch(()=>{});
   async function download(){
     try{const result=await api.get(`projects/${selected}/export`);if(!alive.current)return;const blob=new Blob([JSON.stringify(result,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`workspace-${selected}.json`;a.click();URL.revokeObjectURL(url);setNotice('项目已导出');}catch(e){report(e);}
   }
@@ -136,11 +159,11 @@ function WorkspaceApp({reader}){
   const tasks=(snapshot?.tasks??[]).filter(t=>t.todoEnabled&&t.archived===archive&&(filter==='all'||filter==='open'&&t.status!=='done'||filter==='mine'&&t.assigneeIds.includes(reader.user.id)));
   const active=(snapshot?.tasks??[]).filter(t=>t.todoEnabled&&!t.archived),done=active.filter(t=>t.status==='done').length;
   const names=new Map(snapshot?.members.map(m=>[m.id,m.name])??[]);
-  const taskLocked=task=>!writable||busy||task.archived||['queued','attention','retry'].includes(task.syncStatus);
+  const taskLocked=task=>!writable||task.archived;
   const renderTask=task=><div className="workspace-task" data-task-id={task.id} data-task-revision={task.revision} data-done={task.status==='done'}>
     <Checkbox aria-label={`完成待办 ${task.title}`} checked={task.status==='done'} disabled={taskLocked(task)} onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()} onCheckedChange={done=>void saveTask(task,{status:done?'done':'todo'})}/>
     <div className="workspace-task-main"><button type="button" className="workspace-task-title" onClick={()=>setDetail(task)} onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}>{task.title}</button>
-      <p className="workspace-task-meta"><span className={overdue(task)?'workspace-overdue':''}>{overdue(task)?'已逾期 · ':''}{dateText(task.deadline)}</span>{task.location&&<span>地点：{task.location}</span>}{task.assigneeIds.length>0&&<span>负责人：{task.assigneeIds.map(id=>names.get(id)??'已停用成员').join('、')}</span>}{task.syncStatus==='queued'&&<span>同步中…</span>}</p>
+      <p className="workspace-task-meta"><span className={overdue(task)?'workspace-overdue':''}>{overdue(task)?'已逾期 · ':''}{dateText(task.deadline)}</span>{task.location&&<span>地点：{task.location}</span>}{task.assigneeIds.length>0&&<span>负责人：{task.assigneeIds.map(id=>names.get(id)??'已停用成员').join('、')}</span>}</p>
     </div>
     <select aria-label={`${task.title}的状态`} value={task.status} disabled={taskLocked(task)} onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()} onChange={e=>void saveTask(task,{status:e.target.value})}>{statuses.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
   </div>;
@@ -162,11 +185,11 @@ function WorkspaceApp({reader}){
         <label className="workspace-inline"><input type="checkbox" checked={archive} onChange={e=>setArchive(e.target.checked)}/>已归档</label>
       </div>
       {view==='list'&&(tasks.length?<ul className="workspace-task-list" role="tree" aria-label="待办层级">{taskHierarchy(tasks).map(task=><li key={task.id} role="treeitem" aria-level={task.depth+1} style={{paddingLeft:Math.min(task.depth,8)*20}}>{renderTask(task)}</li>)}</ul>:<p className="workspace-empty">{archive?'没有已归档的待办。':'这里还没有待办。'}</p>)}
-      {view==='board'&&<TaskBoard tasks={tasks} dependencies={snapshot.dependencies} revision={snapshot.revision} disabled={!writable||busy||archive} renderTask={renderTask} onMove={moveTask}/>}
+      {view==='board'&&<TaskBoard tasks={tasks} dependencies={snapshot.dependencies} revision={snapshot.revision} disabled={!writable||archive} renderTask={renderTask} onMove={moveTask}/>}
       {view==='timeline'&&<TaskTimeline tasks={tasks} dependencies={snapshot.dependencies} onOpen={setDetail}/>}
       {view==='calendar'&&<TaskCalendar tasks={tasks} onOpen={setDetail}/>}
       {['timeline','calendar'].includes(view)&&<details className="workspace-undated"><summary>未设截止时间（{tasks.filter(t=>!t.deadline).length}）</summary><ul className="workspace-task-list">{tasks.filter(t=>!t.deadline).map(task=><li key={task.id}>{renderTask(task)}</li>)}</ul></details>}
-      <p className="workspace-hint workspace-footer">北京时间 · 与 Blog / RemNote 节点同步</p>
+      <p className="workspace-hint workspace-footer">北京时间 · 与 Blog 共用待办</p>
     </CardContent></Card>}
     {create&&<Modal title="新建项目" onClose={()=>setCreate(false)} busy={busy}><form className="workspace-form" onSubmit={createProject}><label>项目名称<input autoFocus required maxLength={160} value={projectName} disabled={busy} onChange={e=>setProjectName(e.target.value)}/></label><p className="workspace-hint">项目对应一个 Blog document，默认对全体团队成员开放。</p>{error&&<p role="alert" className="workspace-error">{error}</p>}<Button type="submit" disabled={busy||!projectName.trim()}>创建项目</Button></form></Modal>}
     {snapshot&&detail&&<TaskDetail key={detail.id} task={detail} snapshot={snapshot} projects={projects} api={api} collaboration={collaboration} mutate={mutate} busy={busy} onClose={()=>setDetail(null)} Modal={Modal}/>}

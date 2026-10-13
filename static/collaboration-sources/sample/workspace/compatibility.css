@@ -12,6 +12,10 @@
 .workspace-ui .workspace-toolbar>h2,.workspace-ui .workspace-toolbar>[data-slot=card-title] {flex:1;min-width:0;overflow-wrap:anywhere;}
 .workspace-ui .workspace-grow {flex:1;min-width:180px;}
 .workspace-ui .workspace-inline {display:inline-flex;align-items:center;gap:6px;}
+.workspace-ui .workspace-duration {border:0;padding:0;min-width:0;}
+.workspace-ui .workspace-duration-parts {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
+.workspace-ui .workspace-duration-parts label {min-width:0;}
+.workspace-ui .workspace-duration-parts input {width:100%;}
 .workspace-ui .workspace-status {min-height:1.7em;color:#24704b;font-size:13px;}
 .workspace-ui .workspace-error {color:var(--workspace-error);margin:.5rem 0;white-space:pre-wrap;}
 .workspace-ui .workspace-hint {color:var(--workspace-muted);font-size:13px;}
